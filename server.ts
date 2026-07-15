@@ -228,6 +228,7 @@ app.get("/api/download-project-zip", (req, res) => {
 app.post("/api/github-push", (req, res) => {
   const logs: string[] = [];
   let maskedToken = "";
+  let base64Token = "";
   
   try {
     const { repoUrl, token } = req.body;
@@ -242,33 +243,38 @@ app.post("/api/github-push", (req, res) => {
       cleanUrl = cleanUrl.slice(0, -4);
     }
 
+    let cleanRepoUrl = cleanUrl;
+    if (!cleanRepoUrl.startsWith("https://") && !cleanRepoUrl.startsWith("http://")) {
+      cleanRepoUrl = "https://" + cleanRepoUrl;
+    }
+    cleanRepoUrl += ".git";
+
     // Sanitize token: strip spaces and any non-token characters
     const cleanToken = token.trim().replace(/[^\w_]/g, "");
     maskedToken = cleanToken; // save reference for masking in logs
     
-    let authenticatedUrl = "";
-    if (cleanUrl.startsWith("https://github.com/")) {
-      authenticatedUrl = cleanUrl.replace("https://github.com/", `https://${cleanToken}@github.com/`);
-    } else if (cleanUrl.startsWith("github.com/")) {
-      authenticatedUrl = `https://${cleanToken}@${cleanUrl}`;
-    } else {
-      authenticatedUrl = `https://${cleanToken}@github.com/${cleanUrl}`;
-    }
-    authenticatedUrl += ".git";
-
-    // Escape single quotes for shell safety
-    const safeUrl = authenticatedUrl.replace(/'/g, "'\\''");
+    // Create base64 credentials for http.extraHeader (Authorization header)
+    base64Token = Buffer.from(`x-access-token:${cleanToken}`).toString("base64");
 
     const runGitCommand = (cmd: string) => {
-      // Create a display-safe version of the command where token is masked
+      // Create a display-safe version of the command where token and base64 token are masked
       let displayCmd = cmd;
       if (cleanToken && displayCmd.includes(cleanToken)) {
         displayCmd = displayCmd.replace(new RegExp(cleanToken, "g"), "****");
       }
+      if (base64Token && displayCmd.includes(base64Token)) {
+        displayCmd = displayCmd.replace(new RegExp(base64Token, "g"), "****");
+      }
       logs.push(`$ ${displayCmd}`);
 
       try {
-        const out = execSync(cmd, { stdio: "pipe" }).toString();
+        const out = execSync(cmd, { 
+          stdio: "pipe",
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: "0" // Prevent git from prompting for password interactively
+          }
+        }).toString();
         if (out) logs.push(out);
       } catch (err: any) {
         const stderr = err.stderr ? err.stderr.toString() : "";
@@ -283,6 +289,12 @@ app.post("/api/github-push", (req, res) => {
           cleanStderr = cleanStderr.replace(tokenRegex, "****");
           cleanStdout = cleanStdout.replace(tokenRegex, "****");
           cleanErrMsg = cleanErrMsg.replace(tokenRegex, "****");
+        }
+        if (base64Token) {
+          const b64Regex = new RegExp(base64Token, "g");
+          cleanStderr = cleanStderr.replace(b64Regex, "****");
+          cleanStdout = cleanStdout.replace(b64Regex, "****");
+          cleanErrMsg = cleanErrMsg.replace(b64Regex, "****");
         }
 
         logs.push(`Error running command: ${displayCmd}`);
@@ -306,20 +318,24 @@ app.post("/api/github-push", (req, res) => {
     runGitCommand('git config user.name "Nomi Mobile Builder"');
     runGitCommand('git config user.email "bbbj929@gmail.com"');
 
-    // 3. Stage all files
+    // 3. Configure local authentication header so git doesn't prompt for password or usernames
+    logs.push("Configuring secure HTTP authorization header...");
+    runGitCommand(`git config --local http.https://github.com/.extraHeader "Authorization: Basic ${base64Token}"`);
+
+    // 4. Stage all files
     runGitCommand("git add .");
 
-    // 4. Create Commit
+    // 5. Create Commit
     try {
       runGitCommand('git commit -m "Deploy Nomi v1.0 source to GitHub (Cloud Push)"');
     } catch (e: any) {
       logs.push("Note: Codebase has no changes to commit.");
     }
 
-    // 5. Ensure branch name is main
+    // 6. Ensure branch name is main
     runGitCommand("git branch -M main");
 
-    // 6. Check if remote origin already exists
+    // 7. Check if remote origin already exists
     let originExists = false;
     try {
       const remotes = execSync("git remote", { stdio: "pipe" }).toString();
@@ -330,6 +346,8 @@ app.post("/api/github-push", (req, res) => {
       // Ignored
     }
 
+    const safeUrl = cleanRepoUrl.replace(/'/g, "'\\''");
+
     if (originExists) {
       logs.push("Updating existing origin remote URL...");
       runGitCommand(`git remote set-url origin '${safeUrl}'`);
@@ -338,21 +356,39 @@ app.post("/api/github-push", (req, res) => {
       runGitCommand(`git remote add origin '${safeUrl}'`);
     }
 
-    // 7. Force push to remote main branch
+    // 8. Force push to remote main branch with proper syntax
     logs.push("Pushing complete assets securely to GitHub main branch...");
     runGitCommand("git push -u origin main --force");
 
     logs.push("Successfully pushed entire source code to your GitHub repository! 🎉");
+
+    // Clean up local extraHeader config so the PAT is never stored persistently on the container
+    try {
+      execSync("git config --local --unset http.https://github.com/.extraHeader", { stdio: "ignore" });
+      logs.push("Securely cleared local Git authentication header.");
+    } catch (e) {
+      // Ignored
+    }
 
     res.json({ success: true, logs });
 
   } catch (error: any) {
     console.error("GitHub Push error:", error);
     
+    // Clean up local extraHeader config on failure as well
+    try {
+      execSync("git config --local --unset http.https://github.com/.extraHeader", { stdio: "ignore" });
+    } catch (e) {
+      // Ignored
+    }
+
     // Mask tokens if present in error message
     let finalDetails = error.message;
     if (maskedToken && finalDetails.includes(maskedToken)) {
       finalDetails = finalDetails.replace(new RegExp(maskedToken, "g"), "****");
+    }
+    if (base64Token && finalDetails.includes(base64Token)) {
+      finalDetails = finalDetails.replace(new RegExp(base64Token, "g"), "****");
     }
 
     res.status(500).json({ 
