@@ -69,6 +69,8 @@ jobs:
           # Copy release AAB
           if [ -f android/app/build/outputs/bundle/release/app-release-unsigned.aab ]; then
             cp android/app/build/outputs/bundle/release/app-release-unsigned.aab build-outputs/Nomi-PlayStore-Unsigned.aab
+          elif [ -f android/app/build/outputs/bundle/release/app-release.aab ]; then
+            cp android/app/build/outputs/bundle/release/app-release.aab build-outputs/Nomi-PlayStore-Unsigned.aab
           fi
 
       - name: Upload Testing APK to GitHub Actions
