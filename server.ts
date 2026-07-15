@@ -247,23 +247,28 @@ app.post("/api/github-push", (req, res) => {
     if (!cleanRepoUrl.startsWith("https://") && !cleanRepoUrl.startsWith("http://")) {
       cleanRepoUrl = "https://" + cleanRepoUrl;
     }
-    cleanRepoUrl += ".git";
+    const publicRepoUrl = cleanRepoUrl + ".git";
 
     // Sanitize token: strip spaces and any non-token characters
     const cleanToken = token.trim().replace(/[^\w_]/g, "");
     maskedToken = cleanToken; // save reference for masking in logs
     
-    // Create base64 credentials for http.extraHeader (Authorization header)
-    base64Token = Buffer.from(`x-access-token:${cleanToken}`).toString("base64");
+    // Construct the authenticated URL with the PAT embedded as the password using x-access-token
+    let authRepoUrl = "";
+    if (cleanRepoUrl.startsWith("https://github.com/")) {
+      authRepoUrl = cleanRepoUrl.replace("https://github.com/", `https://x-access-token:${cleanToken}@github.com/`);
+    } else if (cleanRepoUrl.startsWith("http://github.com/")) {
+      authRepoUrl = cleanRepoUrl.replace("http://github.com/", `https://x-access-token:${cleanToken}@github.com/`);
+    } else {
+      authRepoUrl = `https://x-access-token:${cleanToken}@github.com/${cleanRepoUrl.replace(/^https?:\/\//, "")}`;
+    }
+    authRepoUrl += ".git";
 
     const runGitCommand = (cmd: string) => {
-      // Create a display-safe version of the command where token and base64 token are masked
+      // Create a display-safe version of the command where token is masked
       let displayCmd = cmd;
       if (cleanToken && displayCmd.includes(cleanToken)) {
         displayCmd = displayCmd.replace(new RegExp(cleanToken, "g"), "****");
-      }
-      if (base64Token && displayCmd.includes(base64Token)) {
-        displayCmd = displayCmd.replace(new RegExp(base64Token, "g"), "****");
       }
       logs.push(`$ ${displayCmd}`);
 
@@ -290,12 +295,6 @@ app.post("/api/github-push", (req, res) => {
           cleanStdout = cleanStdout.replace(tokenRegex, "****");
           cleanErrMsg = cleanErrMsg.replace(tokenRegex, "****");
         }
-        if (base64Token) {
-          const b64Regex = new RegExp(base64Token, "g");
-          cleanStderr = cleanStderr.replace(b64Regex, "****");
-          cleanStdout = cleanStdout.replace(b64Regex, "****");
-          cleanErrMsg = cleanErrMsg.replace(b64Regex, "****");
-        }
 
         logs.push(`Error running command: ${displayCmd}`);
         if (cleanStdout) logs.push(`stdout: ${cleanStdout}`);
@@ -318,24 +317,20 @@ app.post("/api/github-push", (req, res) => {
     runGitCommand('git config user.name "Nomi Mobile Builder"');
     runGitCommand('git config user.email "bbbj929@gmail.com"');
 
-    // 3. Configure local authentication header so git doesn't prompt for password or usernames
-    logs.push("Configuring secure HTTP authorization header...");
-    runGitCommand(`git config --local http.https://github.com/.extraHeader "Authorization: Basic ${base64Token}"`);
-
-    // 4. Stage all files
+    // 3. Stage all files
     runGitCommand("git add .");
 
-    // 5. Create Commit
+    // 4. Create Commit
     try {
       runGitCommand('git commit -m "Deploy Nomi v1.0 source to GitHub (Cloud Push)"');
     } catch (e: any) {
       logs.push("Note: Codebase has no changes to commit.");
     }
 
-    // 6. Ensure branch name is main
+    // 5. Ensure branch name is main
     runGitCommand("git branch -M main");
 
-    // 7. Check if remote origin already exists
+    // 6. Check if remote origin already exists
     let originExists = false;
     try {
       const remotes = execSync("git remote", { stdio: "pipe" }).toString();
@@ -346,26 +341,27 @@ app.post("/api/github-push", (req, res) => {
       // Ignored
     }
 
-    const safeUrl = cleanRepoUrl.replace(/'/g, "'\\''");
+    const safeAuthUrl = authRepoUrl.replace(/'/g, "'\\''");
+    const safePublicUrl = publicRepoUrl.replace(/'/g, "'\\''");
 
     if (originExists) {
-      logs.push("Updating existing origin remote URL...");
-      runGitCommand(`git remote set-url origin '${safeUrl}'`);
+      logs.push("Updating origin remote URL with secure credentials...");
+      runGitCommand(`git remote set-url origin '${safeAuthUrl}'`);
     } else {
-      logs.push("Adding new origin remote URL...");
-      runGitCommand(`git remote add origin '${safeUrl}'`);
+      logs.push("Adding origin remote URL with secure credentials...");
+      runGitCommand(`git remote add origin '${safeAuthUrl}'`);
     }
 
-    // 8. Force push to remote main branch with proper syntax
+    // 7. Force push to remote main branch with proper syntax
     logs.push("Pushing complete assets securely to GitHub main branch...");
     runGitCommand("git push -u origin main --force");
 
     logs.push("Successfully pushed entire source code to your GitHub repository! 🎉");
 
-    // Clean up local extraHeader config so the PAT is never stored persistently on the container
+    // 8. Clean up local remote config back to public URL so the PAT is never stored persistently
     try {
-      execSync("git config --local --unset http.https://github.com/.extraHeader", { stdio: "ignore" });
-      logs.push("Securely cleared local Git authentication header.");
+      execSync(`git remote set-url origin '${safePublicUrl}'`, { stdio: "ignore" });
+      logs.push("Securely cleared git credentials from remote origin URL.");
     } catch (e) {
       // Ignored
     }
@@ -375,9 +371,18 @@ app.post("/api/github-push", (req, res) => {
   } catch (error: any) {
     console.error("GitHub Push error:", error);
     
-    // Clean up local extraHeader config on failure as well
+    // Clean up local config on failure as well to ensure PAT is cleared
     try {
-      execSync("git config --local --unset http.https://github.com/.extraHeader", { stdio: "ignore" });
+      const { repoUrl } = req.body;
+      if (repoUrl) {
+        let cleanUrl = repoUrl.trim().replace(/[^\w\-./:]/g, "");
+        if (cleanUrl.endsWith(".git")) cleanUrl = cleanUrl.slice(0, -4);
+        if (!cleanUrl.startsWith("https://") && !cleanUrl.startsWith("http://")) {
+          cleanUrl = "https://" + cleanUrl;
+        }
+        cleanUrl += ".git";
+        execSync(`git remote set-url origin '${cleanUrl.replace(/'/g, "'\\''")}'`, { stdio: "ignore" });
+      }
     } catch (e) {
       // Ignored
     }
@@ -386,9 +391,6 @@ app.post("/api/github-push", (req, res) => {
     let finalDetails = error.message;
     if (maskedToken && finalDetails.includes(maskedToken)) {
       finalDetails = finalDetails.replace(new RegExp(maskedToken, "g"), "****");
-    }
-    if (base64Token && finalDetails.includes(base64Token)) {
-      finalDetails = finalDetails.replace(new RegExp(base64Token, "g"), "****");
     }
 
     res.status(500).json({ 
