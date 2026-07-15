@@ -1,0 +1,93 @@
+name: Build Android APK & AAB (Cloud Builder)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # Allows manual trigger from GitHub browser interface on phone
+
+jobs:
+  build:
+    name: Build Native Android App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Web Dependencies
+        run: npm ci || npm install
+
+      - name: Build Web Assets & Sync Capacitor
+        run: |
+          npm run build
+          npx cap sync android
+
+      - name: Setup Java JDK (v17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Grant Execute Permission for Gradle Wrapper
+        run: chmod +x android/gradlew
+
+      - name: Build Debug APK (For direct phone installation)
+        run: |
+          cd android
+          ./gradlew assembleDebug
+
+      - name: Build Release APK (Unsigned)
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Build Release App Bundle (AAB for Google Play)
+        run: |
+          cd android
+          ./gradlew bundleRelease
+
+      - name: Locate and Rename Artifacts for Ease of Use
+        run: |
+          mkdir -p build-outputs
+          # Copy debug APK
+          if [ -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp android/app/build/outputs/apk/debug/app-debug.apk build-outputs/Nomi-Debug-Testing.apk
+          fi
+          # Copy release APK
+          if [ -f android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release-unsigned.apk build-outputs/Nomi-Release-Unsigned.apk
+          fi
+          # Copy release AAB
+          if [ -f android/app/build/outputs/bundle/release/app-release-unsigned.aab ]; then
+            cp android/app/build/outputs/bundle/release/app-release-unsigned.aab build-outputs/Nomi-PlayStore-Unsigned.aab
+          fi
+
+      - name: Upload Testing APK to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nomi-Android-Testing-APK
+          path: build-outputs/Nomi-Debug-Testing.apk
+          if-no-files-found: error
+
+      - name: Upload Unsigned Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nomi-Android-Release-Unsigned-APK
+          path: build-outputs/Nomi-Release-Unsigned.apk
+          if-no-files-found: warn
+
+      - name: Upload Unsigned Play Store Bundle (AAB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nomi-Android-PlayStore-Unsigned-AAB
+          path: build-outputs/Nomi-PlayStore-Unsigned.aab
+          if-no-files-found: warn

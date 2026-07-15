@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-500: #2563eb;
+  --color-brand-600: #1d4ed8;
+  --color-brand-700: #1d4ed8;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
+}
+
+/* Custom scrollbars inside our mobile frame */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+body {
+  background-color: #0f172a;
+  background-image: 
+    radial-gradient(circle at 5% 5%, rgba(37, 99, 235, 0.12) 0%, transparent 45%),
+    radial-gradient(circle at 95% 95%, rgba(59, 130, 246, 0.08) 0%, transparent 45%);
+  min-height: 100vh;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-x: hidden;
+  color: #f1f5f9;
+  font-family: var(--font-sans);
+}
+
+/* App View transitions */
+.screen-transition-enter {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.screen-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Mock scanner glow animation */
+@keyframes scan-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(37, 99, 235, 0.3);
+    opacity: 0.8;
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(37, 99, 235, 0.7);
+    opacity: 1;
+  }
+}
+
+.animate-scan-glow {
+  animation: scan-glow 2s infinite ease-in-out;
+}
+
+/* Pulsing radar for map indicators */
+@keyframes pulse-radar {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 12px rgba(37, 99, 235, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+  }
+}
+
+.animate-pulse-radar {
+  animation: pulse-radar 2s infinite;
+}
