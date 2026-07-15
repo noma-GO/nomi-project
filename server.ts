@@ -226,6 +226,9 @@ app.get("/api/download-project-zip", (req, res) => {
  * and pushes the codebase directly to GitHub.
  */
 app.post("/api/github-push", (req, res) => {
+  const logs: string[] = [];
+  let maskedToken = "";
+  
   try {
     const { repoUrl, token } = req.body;
 
@@ -233,43 +236,62 @@ app.post("/api/github-push", (req, res) => {
       return res.status(400).json({ error: "Both repoUrl and token are required" });
     }
 
-    // Sanitize and format the authenticated URL
-    let cleanUrl = repoUrl.trim();
+    // Sanitize repoUrl: strip whitespace and any invalid URL/unicode characters (like copy-paste artifacts)
+    let cleanUrl = repoUrl.trim().replace(/[^\w\-./:]/g, "");
     if (cleanUrl.endsWith(".git")) {
       cleanUrl = cleanUrl.slice(0, -4);
     }
+
+    // Sanitize token: strip spaces and any non-token characters
+    const cleanToken = token.trim().replace(/[^\w_]/g, "");
+    maskedToken = cleanToken; // save reference for masking in logs
     
     let authenticatedUrl = "";
     if (cleanUrl.startsWith("https://github.com/")) {
-      authenticatedUrl = cleanUrl.replace("https://github.com/", `https://${token}@github.com/`);
+      authenticatedUrl = cleanUrl.replace("https://github.com/", `https://${cleanToken}@github.com/`);
     } else if (cleanUrl.startsWith("github.com/")) {
-      authenticatedUrl = `https://${token}@${cleanUrl}`;
+      authenticatedUrl = `https://${cleanToken}@${cleanUrl}`;
     } else {
-      // If user inputs a simple "username/repo" string
-      authenticatedUrl = `https://${token}@github.com/${cleanUrl}`;
+      authenticatedUrl = `https://${cleanToken}@github.com/${cleanUrl}`;
     }
     authenticatedUrl += ".git";
 
-    const logs: string[] = [];
+    // Escape single quotes for shell safety
+    const safeUrl = authenticatedUrl.replace(/'/g, "'\\''");
+
     const runGitCommand = (cmd: string) => {
-      logs.push(`$ ${cmd.includes("@github.com") ? cmd.replace(token, "****") : cmd}`);
+      // Create a display-safe version of the command where token is masked
+      let displayCmd = cmd;
+      if (cleanToken && displayCmd.includes(cleanToken)) {
+        displayCmd = displayCmd.replace(new RegExp(cleanToken, "g"), "****");
+      }
+      logs.push(`$ ${displayCmd}`);
+
       try {
         const out = execSync(cmd, { stdio: "pipe" }).toString();
         if (out) logs.push(out);
       } catch (err: any) {
         const stderr = err.stderr ? err.stderr.toString() : "";
         const stdout = err.stdout ? err.stdout.toString() : "";
-        let errorMsg = err.message;
-        if (errorMsg.includes(token)) {
-          errorMsg = errorMsg.replace(token, "****");
+        
+        let cleanStderr = stderr;
+        let cleanStdout = stdout;
+        let cleanErrMsg = err.message;
+
+        if (cleanToken) {
+          const tokenRegex = new RegExp(cleanToken, "g");
+          cleanStderr = cleanStderr.replace(tokenRegex, "****");
+          cleanStdout = cleanStdout.replace(tokenRegex, "****");
+          cleanErrMsg = cleanErrMsg.replace(tokenRegex, "****");
         }
-        logs.push(`Error: ${errorMsg}`);
-        if (stdout) logs.push(`stdout: ${stdout}`);
-        if (stderr) {
-          const cleanStderr = stderr.includes(token) ? stderr.replace(token, "****") : stderr;
-          logs.push(`stderr: ${cleanStderr}`);
-        }
-        throw new Error(`Git command failed: ${cmd.includes("@github.com") ? "git push" : cmd}. ${stderr || err.message}`);
+
+        logs.push(`Error running command: ${displayCmd}`);
+        if (cleanStdout) logs.push(`stdout: ${cleanStdout}`);
+        if (cleanStderr) logs.push(`stderr: ${cleanStderr}`);
+
+        const throwErr = new Error(`Git command failed: ${displayCmd}. Stderr: ${cleanStderr || cleanErrMsg}`);
+        (throwErr as any).logs = logs;
+        throw throwErr;
       }
     };
 
@@ -285,25 +307,36 @@ app.post("/api/github-push", (req, res) => {
     runGitCommand('git config user.email "bbbj929@gmail.com"');
 
     // 3. Stage all files
-    runGitCommand("git add -A");
+    runGitCommand("git add .");
 
     // 4. Create Commit
     try {
       runGitCommand('git commit -m "Deploy Nomi v1.0 source to GitHub (Cloud Push)"');
     } catch (e: any) {
-      logs.push("Note: Codebase is already up to date.");
+      logs.push("Note: Codebase has no changes to commit.");
     }
 
     // 5. Ensure branch name is main
     runGitCommand("git branch -M main");
 
-    // 6. Set up the remote origin securely
+    // 6. Check if remote origin already exists
+    let originExists = false;
     try {
-      runGitCommand("git remote remove origin");
+      const remotes = execSync("git remote", { stdio: "pipe" }).toString();
+      if (remotes.includes("origin")) {
+        originExists = true;
+      }
     } catch (e) {
-      // Ignored if remote didn't exist
+      // Ignored
     }
-    runGitCommand(`git remote add origin ${authenticatedUrl}`);
+
+    if (originExists) {
+      logs.push("Updating existing origin remote URL...");
+      runGitCommand(`git remote set-url origin '${safeUrl}'`);
+    } else {
+      logs.push("Adding new origin remote URL...");
+      runGitCommand(`git remote add origin '${safeUrl}'`);
+    }
 
     // 7. Force push to remote main branch
     logs.push("Pushing complete assets securely to GitHub main branch...");
@@ -315,10 +348,17 @@ app.post("/api/github-push", (req, res) => {
 
   } catch (error: any) {
     console.error("GitHub Push error:", error);
+    
+    // Mask tokens if present in error message
+    let finalDetails = error.message;
+    if (maskedToken && finalDetails.includes(maskedToken)) {
+      finalDetails = finalDetails.replace(new RegExp(maskedToken, "g"), "****");
+    }
+
     res.status(500).json({ 
       error: "GitHub Push Failed", 
-      details: error.message, 
-      logs: error.logs || [error.message] 
+      details: finalDetails, 
+      logs: error.logs || logs || [finalDetails] 
     });
   }
 });
