@@ -73,6 +73,45 @@ jobs:
             cp android/app/build/outputs/bundle/release/app-release.aab build-outputs/Nomi-PlayStore-Unsigned.aab
           fi
 
+      - name: Sign Release Artifacts with Self-Signed Keystore
+        run: |
+          # 1. Generate Keystore
+          keytool -genkey -v -keystore release.keystore \
+            -alias nomi-alias \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass nomipassword \
+            -keypass nomipassword \
+            -dname "CN=Nomi, OU=Nomi, O=Nomi, L=Nomi, S=Nomi, C=US"
+          
+          # 2. Sign the Release APK using apksigner
+          if [ -f build-outputs/Nomi-Release-Unsigned.apk ]; then
+            APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
+            $APKSIGNER sign --ks release.keystore \
+              --ks-pass pass:nomipassword \
+              --key-pass pass:nomipassword \
+              --out build-outputs/Nomi-Release-Signed.apk \
+              build-outputs/Nomi-Release-Unsigned.apk
+            echo "Successfully signed Release APK!"
+            $APKSIGNER verify build-outputs/Nomi-Release-Signed.apk
+          else
+            echo "No Release APK found to sign!"
+          fi
+
+          # 3. Sign the Release AAB using jarsigner
+          if [ -f build-outputs/Nomi-PlayStore-Unsigned.aab ]; then
+            cp build-outputs/Nomi-PlayStore-Unsigned.aab build-outputs/Nomi-PlayStore-Signed.aab
+            jarsigner -keystore release.keystore \
+              -storepass nomipassword \
+              -keypass nomipassword \
+              build-outputs/Nomi-PlayStore-Signed.aab \
+              nomi-alias
+            echo "Successfully signed Release AAB!"
+          else
+            echo "No Release AAB found to sign!"
+          fi
+
       - name: Upload Testing APK to GitHub Actions
         uses: actions/upload-artifact@v4
         with:
@@ -80,11 +119,25 @@ jobs:
           path: build-outputs/Nomi-Debug-Testing.apk
           if-no-files-found: error
 
+      - name: Upload Signed Release APK (Directly installable on phone)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nomi-Android-Release-Signed-APK
+          path: build-outputs/Nomi-Release-Signed.apk
+          if-no-files-found: error
+
       - name: Upload Unsigned Release APK
         uses: actions/upload-artifact@v4
         with:
           name: Nomi-Android-Release-Unsigned-APK
           path: build-outputs/Nomi-Release-Unsigned.apk
+          if-no-files-found: warn
+
+      - name: Upload Signed Play Store Bundle (AAB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nomi-Android-PlayStore-Signed-AAB
+          path: build-outputs/Nomi-PlayStore-Signed.aab
           if-no-files-found: warn
 
       - name: Upload Unsigned Play Store Bundle (AAB)
