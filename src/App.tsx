@@ -36,6 +36,7 @@ import { useLanguage, Language } from "./lib/i18n";
 import OnboardingView from "./components/OnboardingView";
 
 export default function App() {
+  console.log("[NOMI APP] Initializing App component...");
   const { t, language, setLanguage } = useLanguage();
   // Onboarding state
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
@@ -91,13 +92,16 @@ export default function App() {
 
   // 1. Sync Products Real-Time from Firestore (With auto-seeding on first startup)
   useEffect(() => {
+    console.log("[NOMI APP] Effect 1 (Products subscription) mounted.");
     const prodCol = collection(db, "products");
     const unsubProd = onSnapshot(prodCol, async (snap) => {
+      console.log("[NOMI APP] Products snapshot updated, size:", snap.size);
       if (snap.empty) {
         console.log("No products found in Firestore. Seeding database...");
         try {
           const promises = INITIAL_PRODUCTS.map((p) => setDoc(doc(db, "products", p.id), p));
           await Promise.all(promises);
+          console.log("[NOMI APP] Database seeded successfully.");
         } catch (err) {
           console.error("Error seeding initial products:", err);
         }
@@ -116,29 +120,37 @@ export default function App() {
           return b.id.localeCompare(a.id);
         });
         setProducts(prodList);
+        console.log("[NOMI APP] Products updated in state, count:", prodList.length);
       }
     }, (err) => {
       console.warn("Products snapshot subscription failed or unauthenticated. Using local list fallback:", err);
       setProducts(INITIAL_PRODUCTS);
     });
 
-    return () => unsubProd();
+    return () => {
+      console.log("[NOMI APP] Effect 1 unmounted.");
+      unsubProd();
+    };
   }, []);
 
   // 2. Setup Firebase Auth & Profile Listener
   useEffect(() => {
+    console.log("[NOMI APP] Effect 2 (Firebase Auth & Profile) mounted.");
     let unsubProfile: (() => void) | null = null;
     let unsubTrans: (() => void) | null = null;
 
     const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
+      console.log("[NOMI APP] Auth state changed. User:", currentUser ? currentUser.uid : "GUEST");
       if (currentUser) {
         setFbUser(currentUser);
         
         // Check/Create User Profile document in Firestore
         const userDocRef = doc(db, "users", currentUser.uid);
         try {
+          console.log("[NOMI APP] Checking if profile exists in Firestore for uid:", currentUser.uid);
           const userDocSnap = await getDoc(userDocRef);
           if (!userDocSnap.exists()) {
+            console.log("[NOMI APP] Profile document does not exist. Creating default profile...");
             await setDoc(userDocRef, {
               uid: currentUser.uid,
               displayName: currentUser.displayName || "Bernard Brewer",
@@ -147,6 +159,9 @@ export default function App() {
               visitedAttractions: ["att-jp-2"],
               createdAt: new Date().toISOString()
             });
+            console.log("[NOMI APP] Default profile document created.");
+          } else {
+            console.log("[NOMI APP] Profile document found in Firestore.");
           }
         } catch (err) {
           console.error("Error initializing user profile doc:", err);
