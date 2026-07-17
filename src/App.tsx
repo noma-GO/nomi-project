@@ -248,7 +248,12 @@ export default function App() {
 
     const storedHome = localStorage.getItem("nomi_home_country");
     if (storedHome) {
-      setHomeCountry(JSON.parse(storedHome));
+      try {
+        const parsed = JSON.parse(storedHome);
+        setHomeCountry(CountryManager.getCountryByCode(parsed.code || parsed));
+      } catch (e) {
+        setHomeCountry(CountryManager.getCountryByCode(storedHome) || US_COUNTRY);
+      }
     } else {
       setHomeCountry(US_COUNTRY);
     }
