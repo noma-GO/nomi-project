@@ -1,9 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Compass, Store, Landmark, Map, MapPin, ShieldAlert, Star, Clock, 
-  Sparkles, CheckCircle2, Ticket, ChevronRight, Navigation, Info 
+  Sparkles, CheckCircle2, Ticket, ChevronRight, Navigation, Info,
+  Globe, Search, Plane, Hotel, Utensils, CloudSun, Languages, 
+  PhoneCall, ShieldCheck, RefreshCw, CreditCard, Droplet, Smile, HeartHandshake
 } from "lucide-react";
-import { Country, Supermarket, Attraction } from "../types";
+import { Country, Supermarket, Attraction, CountryGuide } from "../types";
 import { SUPERMARKETS, ATTRACTIONS } from "../data";
 import { useLanguage } from "../lib/i18n";
 
@@ -11,23 +13,189 @@ interface ExploreViewProps {
   currentCountry: Country;
   homeCountry: Country;
   onNavigate: (screen: any) => void;
+  countriesList: Country[];
+  onAddDynamicCountry: (guide: CountryGuide) => void;
+  countryGuides: Record<string, CountryGuide>;
+  onChangeDestination: (countryCode: string) => void;
+  onOpenCountrySelector?: () => void;
 }
 
 export default function ExploreView({ 
   currentCountry, 
   homeCountry, 
-  onNavigate 
+  onNavigate,
+  countriesList,
+  onAddDynamicCountry,
+  countryGuides,
+  onChangeDestination,
+  onOpenCountrySelector
 }: ExploreViewProps) {
   const { t, language } = useLanguage();
   const isAr = language === "ar";
 
-  const [exploreTab, setExploreTab] = useState<"stores" | "landmarks">("stores");
-  const [activeSupermarket, setActiveSupermarket] = useState<Supermarket | null>(null);
-  const [activeAttraction, setActiveAttraction] = useState<Attraction | null>(null);
+  const [exploreTab, setExploreTab] = useState<"stores" | "landmarks" | "guide">("stores");
+  const [activeSupermarket, setActiveSupermarket] = useState<any | null>(null);
+  const [activeAttraction, setActiveAttraction] = useState<any | null>(null);
   const [showMap, setShowMap] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
 
-  const countrySupermarkets = SUPERMARKETS.filter(s => s.countryCode === currentCountry.code);
-  const countryAttractions = ATTRACTIONS.filter(a => a.countryCode === currentCountry.code);
+  const [gpsStatus, setGpsStatus] = useState<"idle" | "searching" | "success" | "failed">("idle");
+  const [gpsError, setGpsError] = useState("");
+
+  const handleDetectLocation = () => {
+    if (!navigator.geolocation) {
+      setGpsStatus("failed");
+      setGpsError(isAr ? "نظام تحديد المواقع غير مدعوم في هذا المتصفح." : "GPS/Geolocation is not supported by your browser.");
+      return;
+    }
+
+    setGpsStatus("searching");
+    setGpsError("");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setGpsStatus("success");
+        
+        // Accurate location calibration
+        // France is approx Lat 43-50, Long -5-10
+        // Italy is approx Lat 36-47, Long 6-19
+        // Japan is approx Lat 30-45, Long 130-145
+        // Thailand is approx Lat 5-21, Long 97-106
+        // Egypt is approx Lat 22-31, Long 25-35
+        let matchedCode = "JP"; // default
+        if (latitude > 42 && latitude < 51 && longitude > -5 && longitude < 10) {
+          matchedCode = "FR";
+        } else if (latitude > 35 && latitude < 48 && longitude > 6 && longitude < 20) {
+          matchedCode = "IT";
+        } else if (latitude > 5 && latitude < 21 && longitude > 96 && longitude < 106) {
+          matchedCode = "TH";
+        } else if (latitude > 21 && latitude < 32 && longitude > 24 && longitude < 36) {
+          matchedCode = "EG";
+        } else {
+          // If no coordinate zone matches, keep current or default to a common tourist spot like JP
+          matchedCode = "JP";
+        }
+
+        onChangeDestination(matchedCode);
+      },
+      (error) => {
+        console.warn("GPS Permission or detection error:", error);
+        setGpsStatus("failed");
+        setGpsError(
+          isAr 
+            ? "تعذر الاتصال بـ GPS. يرجى تفعيل الموقع أو تحديد الوجهة يدويًا." 
+            : "GPS satellite connection unavailable. Enable location access or select manually."
+        );
+      },
+      { timeout: 8000, enableHighAccuracy: true }
+    );
+  };
+
+  const activeGuide: CountryGuide | undefined = countryGuides[currentCountry.code];
+
+  // If a guide is loaded, use its landmarks/stores. Otherwise fall back to static data.
+  const countrySupermarkets = activeGuide?.supermarkets 
+    ? activeGuide.supermarkets 
+    : SUPERMARKETS.filter(s => s.countryCode === currentCountry.code);
+
+  const countryAttractions = activeGuide?.landmarks 
+    ? activeGuide.landmarks.map(l => ({
+        id: l.id,
+        name: l.name,
+        countryCode: currentCountry.code,
+        category: l.category,
+        ticketPriceLocal: l.ticketPriceLocal,
+        tips: l.tips,
+        description: l.description,
+        hours: l.hours,
+        imagePrompt: ""
+      }))
+    : ATTRACTIONS.filter(a => a.countryCode === currentCountry.code);
+
+  // Auto-fetch guide for current country if not loaded
+  useEffect(() => {
+    if (currentCountry && !countryGuides[currentCountry.code]) {
+      fetchCountryGuide(currentCountry.name);
+    }
+  }, [currentCountry]);
+
+  const fetchCountryGuide = async (name: string) => {
+    setIsSearching(true);
+    setSearchError("");
+    try {
+      const response = await fetch("/api/country-guide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ countryName: name, userLanguage: language })
+      });
+      if (!response.ok) {
+        throw new Error("Failed to generate country guide");
+      }
+      const data: CountryGuide = await response.json();
+      onAddDynamicCountry(data);
+    } catch (err: any) {
+      console.error(err);
+      setSearchError(isAr ? "عذرًا، لم نتمكن من توليد دليل هذا البلد." : "Sorry, we couldn't generate the guide for this country.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchCountry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    setIsSearching(true);
+    setSearchError("");
+
+    // Check if country exists in existing countriesList
+    const queryLower = searchQuery.toLowerCase().trim();
+    const existing = countriesList.find(
+      c => c.name.toLowerCase() === queryLower || 
+           (c.nameAr && c.nameAr.toLowerCase() === queryLower) ||
+           c.code.toLowerCase() === queryLower
+    );
+
+    if (existing) {
+      onChangeDestination(existing.code);
+      setSearchQuery("");
+      setIsSearching(false);
+      return;
+    }
+
+    // Otherwise, generate a guide for the new country
+    try {
+      const response = await fetch("/api/country-guide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ countryName: searchQuery, userLanguage: language })
+      });
+      if (!response.ok) {
+        throw new Error("Failed to search country");
+      }
+      const guideData: CountryGuide = await response.json();
+      
+      // Add dynamic country
+      onAddDynamicCountry(guideData);
+      
+      // Update destination selection
+      onChangeDestination(guideData.code);
+      
+      setSearchQuery("");
+    } catch (err: any) {
+      console.error(err);
+      setSearchError(
+        isAr 
+          ? "لم نتمكن من العثور على هذا البلد أو توليد دليل ذكي له. يرجى محاولة كتابة الاسم بشكل صحيح." 
+          : "Could not find this country or generate an AI guide for it. Please make sure spelling is correct."
+      );
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   const getTicketPriceConverted = (localPrice: number) => {
     if (localPrice === 0) return isAr ? "دخول مجاني" : "Free Admission";
@@ -37,132 +205,58 @@ export default function ExploreView({
     return `${currentCountry.currencySymbol}${localPrice} (${homeCountry.currencySymbol}${converted.toFixed(2)} ${homeCountry.currency})`;
   };
 
-  // Helper translations for static details
-  const translateSMName = (name: string) => {
-    if (!isAr) return name;
-    switch (name) {
-      case "Big C Supercenter": return "بيج سي سوبرسنتر";
-      case "Tesco Lotus Express": return "تيسكو لوتس إكسبريس";
-      case "Seven-Eleven": return "سيفن إلفن";
-      case "Carrefour City": return "كارفور سيتي";
-      case "Monoprix": return "مونوبري";
-      case "Franprix": return "فرانبري";
-      case "Life Supermarket": return "لايف سوبرماركت";
-      case "Gyomu Super": return "غيومو سوبر";
-      case "FamilyMart": return "فاميلي مارت";
-      default: return name;
-    }
-  };
-
-  const translateSMDesc = (desc: string) => {
-    if (!isAr) return desc;
-    if (desc.includes("hypermarket chain")) return "أكبر سلسلة هايبر ماركت منخفضة التكلفة في تايلاند. ممتازة للمشتريات بالجملة، الوجبات الخفيفة والسلع المنزلية بأسعار محلية حقيقية.";
-    if (desc.includes("neighborhood grocery format")) return "بقالة محلية تابعة لتيسكو. رائعة لشراء الضروريات اليومية السريعة والوجبات الخفيفة والمشروبات المبردة بأسعار منضبطة قانونيًا.";
-    if (desc.includes("Standardized small format")) return "متجر ملائم صغير يخضع للتسعير الموحد في كل ركن من أركان البلاد. مثالي لشراء المياه والمشروبات والوجبات الخفيفة الدافئة والضروريات في أي وقت.";
-    if (desc.includes("High quality but mid-high tier")) return "هايبر ماركت عالي الجودة فرنسي متوسط الفخامة. رائع للمياه، والجبن، والمعجنات المخبوزة طازجاً بأسعار تنافسية.";
-    if (desc.includes("Elegant gourmet French")) return "سوبر ماركت فرنسي فاخر وأنيق. يضم مخبزًا رائعًا للمأكولات الطازجة والأجبان المستوردة والوجبات السريعة المتطورة.";
-    if (desc.includes("Popular urban neighborhood grocery")) return "بقالة فرنسية شهيرة داخل الأحياء السكنية. جيدة لشراء السلع والمشروبات اليومية السريعة، مع عروض ممتازة في الفترات المسائية.";
-    if (desc.includes("Large urban Japanese supermarket")) return "سوبر ماركت ياباني حضري ضخم. يقدم المأكولات الطازجة الفاخرة، والسوشي الجاهز الرائع، وصناديق البنتو، والمخبوزات اللذيذة بأسعار حقيقية.";
-    if (desc.includes("Known for wholesale prices")) return "سلسلة يابانية شهيرة بأسعار الجملة المخفضة. جيدة لشراء الوجبات الخفيفة، والصلصات، والتوابل المستوردة، والمشروبات بأسعار رخيصة جداً.";
-    if (desc.includes("Convenience format with fresh onigiri")) return "سلسلة متاجر ملائمة يابانية شهيرة بالأونيغيري الطازج، وصناديق البنتو، والمشروبات الساخنة والباردة ذات الجودة العالية.";
-    return desc;
-  };
-
-  const translateSMSpecialty = (spec: string) => {
-    if (!isAr) return spec;
-    if (spec.includes("Dried Mango")) return "مانجو مجفف محلي (أرخص بـ 4 مرات من أسواق السياح)، معجون كاري أخضر تايلاندي، ومقرمشات الأرز نوري.";
-    if (spec.includes("Ready-to-eat hot bento")) return "صناديق بينتو تايلاندية ساخنة جاهزة للأكل، وجوز هند طازج مبرد، وواقي من الشمس رخيص.";
-    if (spec.includes("Salty Egg Lay's")) return "رقائق بطاطس ليز بنكهة البيض المالح (حصرية لتايلاند)، ومشروب حليب بالنعناع، ومطهر بعشب الليمون.";
-    if (spec.includes("Freshly baked baguettes")) return "خبز الباجيت الطازج، وجبن بري، ومياه معدنية معبأة ماركة كارفور بأسعار زهيدة.";
-    if (spec.includes("Macarons pack")) return "حزمة ماكارون طازجة مخبوزة محليًا، وأجبان معتقة فاخرة، وشوكولاتة داكنة ممتازة.";
-    if (spec.includes("Pre-packaged organic salads")) return "سلطات عضوية طازجة معدة مسبقًا، وكرواسون بالزبدة ساخن، وعصائر فواكه محلية مضغوطة.";
-    if (spec.includes("Sashimi platters")) return "أطباق ساشيمي طازجة وبنتو السوشي (يتم تخفيضها بنسبة 50٪ بعد الساعة 8 مساءً)، وشاي أخضر ماتشا بارد.";
-    if (spec.includes("Green tea kit-kats")) return "بسكويت كيت كات بنكهة الشاي الأخضر بالعبوات العائلية، ومعكرونة الرامين الفورية، وصلصة ياكيتوري.";
-    if (spec.includes("Onigiri")) return "أرز أونيغيري طازج بالتونة والمايونيز، وخبز بطعم الحليب، وقهوة بوز مشروب الطاقة الشهير.";
-    return spec;
-  };
-
-  const translateReviewAuthor = (author: string) => {
-    if (!isAr) return author;
-    switch(author) {
-      case "Sophia L.": return "صوفيا ل.";
-      case "Liam K.": return "ليام ك.";
-      case "Chloe M.": return "كلوي م.";
-      case "Alex P.": return "أليكس ب.";
-      case "Hiro S.": return "هيرو س.";
-      case "Yuki M.": return "يوكي م.";
-      default: return author;
-    }
-  };
-
-  const translateReviewText = (text: string) => {
-    if (!isAr) return text;
-    if (text.includes("Always stock up here")) return "أقوم دائمًا بتخزين الوجبات الخفيفة والهدايا التذكارية من هنا قبل المغادرة. الأسعار ربع أسعار المطار تمامًا!";
-    if (text.includes("Perfect for budget breakfast")) return "مثالي لوجبات الإفطار الاقتصادية. تتوفر المعجنات المخبوزة في الصباح بأسعار رخيصة للغاية.";
-    if (text.includes("Cheap water and toasted toasties")) return "مياه رخيصة وتوست دافئ بالجبن في منتصف الليل! يفتح على مدار الساعة 24/7 وهذا رائع للغاية.";
-    if (text.includes("Unbelievable price for real butter")) return "سعر لا يصدق للزبدة الحقيقية والباجيت المقرمش! تخطى المخابز السياحية واشترِ من هنا.";
-    if (text.includes("Best place to get high quality lunch")) return "أفضل مكان للحصول على غداء عالي الجودة مثل السوشي الرخيص والساشيمي الطازج. لذيذ ونظيف جدًا!";
-    if (text.includes("So cheap to buy spices and ramen")) return "رخيص جدًا لشراء التوابل والرامين والحلويات اليابانية اللذيذة لأخذها كهدية للوطن.";
-    return text;
-  };
-
-  const translateAttractionName = (name: string) => {
-    if (!isAr) return name;
-    switch(name) {
-      case "Grand Palace": return "القصر الكبير";
-      case "Wat Arun (Temple of Dawn)": return "معبد وات آرون (معبد الفجر)";
-      case "Eiffel Tower": return "برج إيفل";
-      case "Louvre Museum": return "متحف اللوفر";
-      case "Senso-ji Temple": return "معبد سينسو-جي";
-      case "Tokyo Skytree": return "برج طوكيو سكاي تري";
-      default: return name;
-    }
-  };
-
-  const translateAttractionDesc = (desc: string) => {
-    if (!isAr) return desc;
-    if (desc.includes("spectacular complex of buildings")) return "مجمع مباني مذهل في قلب بانكوك. المقر الرسمي لملوك سيام منذ عام 1782.";
-    if (desc.includes("iconic riverside Buddhist temple")) return "معبد بوذي مبهر على ضفاف النهر، يشتهر ببرجه المركزي المزخرف بالبورسلين الملون.";
-    if (desc.includes("The absolute global landmark of France")) return "المعلم العالمي الشهير لفرنسا. يوفر إطلالات بانورامية خلابة للمدينة بأكملها من الأعلى.";
-    if (desc.includes("The world's largest art museum")) return "أكبر متحف فني في العالم وموطن للوحة الموناليزا والعديد من الكنوز التاريخية العظيمة.";
-    if (desc.includes("Tokyo's oldest and most iconic ancient Buddhist temple")) return "أقدم وأهم معبد بوذي أثري في طوكيو، يقع في منطقة أسكوسا التاريخية النابضة بالحياة.";
-    if (desc.includes("The tallest structure in Japan")) return "أطول برج اتصالات وهيكل بنائي في اليابان، ويضم منصات مشاهدة بارتفاع شاهق فوق طوكيو.";
-    return desc;
-  };
-
-  const translateAttractionTip = (tip: string) => {
-    if (!isAr) return tip;
-    if (tip.includes("Strict dress code required")) return "يجب الالتزام بزي محتشم. تجنب تماماً المحتالين في الخارج الذين يزعمون كذباً أن القصر 'مغلق اليوم'.";
-    if (tip.includes("Buy official standard ticket only inside")) return "اشترِ التذاكر الرسمية المعتمدة فقط من شباك التذاكر بالداخل بسعر 500 بات؛ وتجنب عروض المرشدين غير الرسميين.";
-    if (tip.includes("Take the public cross-river ferry")) return "استخدم عبّارة النهر العامة بـ 5 بات فقط للوصول، ولا تستخدم القوارب السياحية الخاصة الباهظة (400 بات).";
-    if (tip.includes("Beautiful at sunset")) return "جميل جدًا وقت الغروب. احرص على ارتداء ملابس تغطي الركبتين والأكتاف للدخول.";
-    if (tip.includes("Buy tickets weeks in advance online")) return "اشترِ التذاكر الرسمية عبر الإنترنت قبل أسابيع مسبقًا لتجنب طوابير الانتظار التي تمتد لساعات، أو تذاكر السوق السوداء.";
-    if (tip.includes("Ignore street sellers offering 'express passes'")) return "تجاهل البائعين الجائلين الذين يعرضون 'تذاكر سريعة'، فهم يبيعون تذاكر وهمية غير صالحة.";
-    if (tip.includes("Book timed-entry slots online")) return "احجز فترات الدخول المحددة بالوقت مسبقًا عبر الإنترنت لضمان إمكانية الدخول السريع وتجنب الازدحام.";
-    if (tip.includes("The surrounding cafes charge triple rates")) return "المقاهي المحيطة تتقاضى أسعارًا مضاعفة ثلاث مرات؛ سر لمسافة شارعين إضافيين لتجد المطاعم الباريسية المحلية.";
-    if (tip.includes("Entrance to the temple temple grounds is 100% free")) return "الدخول إلى ساحات المعبد الخارجي مجاني تمامًا بنسبة 100٪. لا تدفع لأي مرشد يطلب منك رسوم دخول.";
-    if (tip.includes("Walk through Nakamise street")) return "امشِ عبر شارع ناكاميسي لشراء الوجبات الخفيفة والحلويات التقليدية المصنوعة محليًا بأسعار عادية ورخيصة.";
-    if (tip.includes("Check the weather forecast")) return "تحقق من توقعات الطقس قبل الصعود؛ الأيام الملبدة بالغيوم تحجب الرؤية تمامًا.";
-    if (tip.includes("Buy tickets online to skip")) return "اشترِ التذاكر عبر الإنترنت لتجاوز طابور التذاكر المباشر الطويل وتوفير حوالي 200 ين.";
-    return tip;
-  };
-
-  const translateAttractionCategory = (cat: string) => {
-    if (!isAr) return cat;
-    switch(cat) {
-      case "Royal Palace": return "قصر ملكي";
-      case "Historic Temple": return "معبد تاريخي";
-      case "Monument": return "معلم أثري";
-      case "Art Museum": return "متحف فني";
-      default: return cat;
-    }
-  };
-
   return (
     <div className="flex-1 overflow-y-auto no-scrollbar p-4 flex flex-col space-y-4 h-full pb-28 bg-slate-50 animate-fade-in" id="explore-view-container">
       
+      {/* Dynamic Global Country Search */}
+      <form onSubmit={handleSearchCountry} className="bg-white p-3 rounded-3xl border border-slate-100 shadow-sm space-y-2">
+        <div className="text-left">
+          <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
+            {isAr ? "استكشف أي بلد في العالم" : "Explore Any Country in the World"}
+          </label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input 
+                type="text" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={isAr ? "ابحث باللغة العربية أو الإنجليزية (مثال: البرازيل، مصر)..." : "Search in English or Arabic (e.g., Brazil, Egypt)..."}
+                className={`w-full bg-slate-50 border border-slate-200 rounded-2xl py-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-inner ${isAr ? "pr-3 pl-10 text-right" : "pl-10 pr-4 text-left"}`}
+              />
+            </div>
+            <button 
+              type="submit"
+              disabled={isSearching}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold text-xs px-4 py-2.5 rounded-2xl transition-all shadow-md flex items-center gap-1.5 shrink-0"
+            >
+              {isSearching ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Globe className="w-4 h-4" />
+              )}
+              <span>{isAr ? "بحث ذكي" : "AI Search"}</span>
+            </button>
+          </div>
+        </div>
+
+        {isSearching && (
+          <div className="p-3 bg-blue-50 border border-blue-100 rounded-2xl flex items-center gap-3 text-left">
+            <RefreshCw className="w-5 h-5 text-blue-600 animate-spin shrink-0" />
+            <div className="text-xs">
+              <p className="font-bold text-blue-900">{isAr ? "جارٍ توليد الدليل الذكي وتحديث الأسعار..." : "Generating AI guide & calibrating local prices..."}</p>
+              <p className="text-slate-500 text-[10px]">{isAr ? "يستغرق هذا ثوانٍ معدودة عبر Gemini 3.5..." : "This takes a few seconds via Gemini 3.5..."}</p>
+            </div>
+          </div>
+        )}
+
+        {searchError && (
+          <p className="text-[11px] text-red-600 font-medium px-1 text-left">{searchError}</p>
+        )}
+      </form>
+
       {/* Segmented Controller Tab Selector */}
-      <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-2">
+      <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-3">
         <button
           onClick={() => {
             setExploreTab("stores");
@@ -189,110 +283,205 @@ export default function ExploreView({
               : "text-slate-500 hover:text-slate-800"
           }`}
         >
-          <Compass className="w-4 h-4" />
+          <Landmark className="w-4 h-4" />
           {t("explore.tab_landmarks")}
+        </button>
+
+        <button
+          onClick={() => {
+            setExploreTab("guide");
+            setActiveSupermarket(null);
+            setActiveAttraction(null);
+          }}
+          className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            exploreTab === "guide" 
+              ? "bg-blue-600 text-white shadow-sm" 
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Globe className="w-4 h-4" />
+          {isAr ? "دليل البلد" : "Country Guide"}
         </button>
       </div>
 
-      {/* Interactive Map View Card (High fidelity vector mockup) */}
-      <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
-        <div className={`flex justify-between items-center ${isAr ? "flex-row-reverse" : "flex-row"}`}>
-          <div className="space-y-0.5 text-left">
-            <span className="text-[8px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-              {t("explore.gps_active")}
-            </span>
-            <p className="text-xs font-bold text-slate-800">{t("explore.radar_map")}</p>
+      {/* Interactive Map View Card */}
+      {exploreTab !== "guide" && (
+        <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3" id="interactive-map-card">
+          <div className={`flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 ${isAr ? "text-right" : "text-left"}`}>
+            <div className="space-y-1">
+              <div className={`flex items-center gap-2 ${isAr ? "flex-row-reverse" : "flex-row"}`}>
+                <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                  gpsStatus === "searching" 
+                    ? "bg-amber-100 text-amber-700 animate-pulse" 
+                    : gpsStatus === "success" 
+                      ? "bg-emerald-100 text-emerald-700" 
+                      : gpsStatus === "failed" 
+                        ? "bg-red-100 text-red-700" 
+                        : "bg-blue-100 text-blue-700"
+                }`}>
+                  {gpsStatus === "searching" 
+                    ? (isAr ? "جاري البحث..." : "GPS SEARCHING...") 
+                    : gpsStatus === "success" 
+                      ? (isAr ? "تم الاتصال" : "GPS CONNECTED") 
+                      : gpsStatus === "failed" 
+                        ? (isAr ? "فشل الاتصال" : "GPS OFFLINE") 
+                        : (isAr ? "نشط" : "GPS READY")}
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {currentCountry.flag} {language === "ar" ? (currentCountry.nameAr || currentCountry.name) : currentCountry.name}
+                </span>
+              </div>
+              <p className="text-xs font-bold text-slate-800">{t("explore.radar_map")}</p>
+            </div>
+
+            <div className={`flex items-center gap-1.5 ${isAr ? "flex-row-reverse" : "flex-row"}`}>
+              <button
+                onClick={handleDetectLocation}
+                disabled={gpsStatus === "searching"}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-[10px] font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <Navigation className={`w-3.5 h-3.5 ${gpsStatus === "searching" ? "animate-spin" : "transform rotate-45"}`} />
+                <span>{isAr ? "تحديد موقعي التلقائي" : "Auto Detect Location"}</span>
+              </button>
+
+              <button
+                onClick={() => setShowMap(!showMap)}
+                className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1 border border-slate-200"
+              >
+                <Map className="w-3.5 h-3.5" />
+                {showMap ? t("explore.hide_map") : t("explore.show_map")}
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => setShowMap(!showMap)}
-            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1 border border-slate-200"
-          >
-            <Map className="w-3.5 h-3.5" />
-            {showMap ? t("explore.hide_map") : t("explore.show_map")}
-          </button>
+
+          {/* GPS Progress / Status Feedback */}
+          {gpsStatus === "searching" && (
+            <div className="p-3 bg-amber-50/50 border border-amber-100/30 rounded-2xl flex items-center gap-3 animate-pulse">
+              <RefreshCw className="w-4 h-4 text-amber-600 animate-spin shrink-0" />
+              <div className="text-[11px] text-left">
+                <p className="font-bold text-amber-900">{isAr ? "جاري البحث عن الأقمار الصناعية لـ GPS..." : "Pinging GPS satellites & localizing region..."}</p>
+                <p className="text-slate-500 text-[9px]">{isAr ? "يرجى السماح بالوصول إلى الموقع عند طلب المتصفح." : "Please allow location access when prompted by your browser."}</p>
+              </div>
+            </div>
+          )}
+
+          {gpsStatus === "success" && (
+            <div className="p-3 bg-emerald-50/50 border border-emerald-100/30 rounded-2xl flex items-center gap-3">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <div className="text-[11px] text-left">
+                <p className="font-bold text-emerald-900">{isAr ? "تم قفل موقع GPS بنجاح!" : "Satellite location acquired successfully!"}</p>
+                <p className="text-slate-500 text-[9px]">
+                  {isAr 
+                    ? `تم ضبط وجهتك النشطة إلى ${currentCountry.flag} ${currentCountry.nameAr || currentCountry.name}`
+                    : `Active destination calibrated to ${currentCountry.flag} ${currentCountry.name}.`}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {gpsStatus === "failed" && (
+            <div className="p-3 bg-red-50/50 border border-red-100/30 rounded-2xl space-y-2">
+              <div className="flex items-start gap-2.5">
+                <ShieldAlert className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-left flex-1">
+                  <p className="font-bold text-red-900">{isAr ? "فشل تحديد الموقع التلقائي" : "GPS Satellite Location Failed"}</p>
+                  <p className="text-red-700/80 leading-normal text-[10px]">{gpsError}</p>
+                </div>
+              </div>
+
+              {onOpenCountrySelector && (
+                <button
+                  onClick={onOpenCountrySelector}
+                  className="w-full py-2 bg-white hover:bg-slate-50 border border-red-200 hover:border-red-300 text-red-700 font-extrabold text-[10px] rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
+                >
+                  <Globe className="w-3.5 h-3.5 text-red-500" />
+                  <span>{isAr ? "استعن بالاختيار اليدوي للبلد" : "Pick Destination Country Manually"}</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {showMap && (
+            <div className="aspect-video bg-slate-950 rounded-2xl relative flex items-center justify-center overflow-hidden border border-slate-800 shadow-inner">
+              {/* Mock Grid */}
+              <div className="absolute inset-0 opacity-10 pointer-events-none">
+                <div className="absolute top-1/4 left-0 w-full h-0.5 bg-blue-500"></div>
+                <div className="absolute top-3/4 left-0 w-full h-0.5 bg-blue-500"></div>
+                <div className="absolute top-0 left-1/3 w-0.5 h-full bg-blue-500"></div>
+                <div className="absolute top-0 left-2/3 w-0.5 h-full bg-blue-500"></div>
+                <div className="absolute top-1/3 left-1/4 w-32 h-32 rounded-full border border-blue-500 animate-pulse"></div>
+              </div>
+
+              {/* Radar glowing ring */}
+              <div className="absolute w-20 h-20 rounded-full bg-blue-500/10 border border-blue-500/30 animate-ping"></div>
+
+              {/* Traveler locator */}
+              <div className="relative z-10 bg-blue-600 p-2 rounded-full text-white shadow-lg animate-bounce shadow-blue-900/50">
+                <Navigation className="w-4 h-4 transform rotate-45" />
+              </div>
+
+              {/* Render Pins */}
+              {exploreTab === "stores" 
+                ? countrySupermarkets.map((sm: any, idx: number) => (
+                    <div
+                      key={sm.id || idx}
+                      style={{ 
+                        top: `${20 + ((idx % 3) * 25)}%`, 
+                        left: `${15 + ((idx % 2) * 50)}%` 
+                      }}
+                      className="absolute z-10 flex flex-col items-center cursor-pointer scale-95 hover:scale-110 transition-all"
+                      onClick={() => setActiveSupermarket(sm)}
+                    >
+                      <div className={`p-1.5 rounded-full text-white shadow ${
+                        activeSupermarket?.id === sm.id ? "bg-blue-600 animate-pulse" : "bg-emerald-600"
+                      }`}>
+                        <Store className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-[8px] font-bold bg-white border border-slate-100 text-slate-800 px-1 py-0.2 rounded mt-1 shadow whitespace-nowrap font-mono">
+                        {sm.name} ({(idx + 1) * 0.4}{isAr ? " كم" : "km"})
+                      </span>
+                    </div>
+                  ))
+                : countryAttractions.map((att: any, idx: number) => (
+                    <div
+                      key={att.id || idx}
+                      style={{ 
+                        top: `${15 + ((idx % 3) * 30)}%`, 
+                        left: `${20 + ((idx % 2) * 50)}%` 
+                      }}
+                      className="absolute z-10 flex flex-col items-center cursor-pointer scale-95 hover:scale-110 transition-all"
+                      onClick={() => setActiveAttraction(att)}
+                    >
+                      <div className={`p-1.5 rounded-full text-white shadow ${
+                        activeAttraction?.id === att.id ? "bg-blue-600 animate-pulse" : "bg-amber-500"
+                      }`}>
+                        <Landmark className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-[8px] font-bold bg-white border border-slate-100 text-slate-800 px-1 py-0.2 rounded mt-1 shadow whitespace-nowrap font-mono">
+                        {att.name} ({(idx + 1) * 0.6}{isAr ? " كم" : "km"})
+                      </span>
+                    </div>
+                  ))
+              }
+            </div>
+          )}
         </div>
+      )}
 
-        {showMap && (
-          <div className="aspect-video bg-slate-950 rounded-2xl relative flex items-center justify-center overflow-hidden border border-slate-800 shadow-inner">
-            {/* Mock Vector Grid lines */}
-            <div className="absolute inset-0 opacity-10 pointer-events-none">
-              <div className="absolute top-1/4 left-0 w-full h-0.5 bg-blue-500"></div>
-              <div className="absolute top-3/4 left-0 w-full h-0.5 bg-blue-500"></div>
-              <div className="absolute top-0 left-1/3 w-0.5 h-full bg-blue-500"></div>
-              <div className="absolute top-0 left-2/3 w-0.5 h-full bg-blue-500"></div>
-              <div className="absolute top-1/3 left-1/4 w-32 h-32 rounded-full border border-blue-500 animate-pulse"></div>
-            </div>
-
-            {/* Radar glowing ring */}
-            <div className="absolute w-20 h-20 rounded-full bg-blue-500/10 border border-blue-500/30 animate-ping"></div>
-
-            {/* Traveler locator pin */}
-            <div className="relative z-10 bg-blue-600 p-2 rounded-full text-white shadow-lg animate-bounce shadow-blue-900/50">
-              <Navigation className="w-4 h-4 transform rotate-45" />
-            </div>
-
-            {/* Render pins dynamically depending on active explorer tab */}
-            {exploreTab === "stores" 
-              ? countrySupermarkets.map((sm, idx) => (
-                  <div
-                    key={sm.id}
-                    style={{ 
-                      top: `${20 + (idx * 30)}%`, 
-                      left: `${15 + (idx * 45)}%` 
-                    }}
-                    className="absolute z-10 flex flex-col items-center cursor-pointer scale-95 hover:scale-110 transition-all"
-                    onClick={() => setActiveSupermarket(sm)}
-                  >
-                    <div className={`p-1.5 rounded-full text-white shadow ${
-                      activeSupermarket?.id === sm.id ? "bg-blue-600 animate-pulse" : "bg-emerald-600"
-                    }`}>
-                      <Store className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="text-[8px] font-bold bg-white border border-slate-100 text-slate-800 px-1 py-0.2 rounded mt-1 shadow whitespace-nowrap font-mono">
-                      {translateSMName(sm.name)} ({(idx + 1) * 0.4}{isAr ? " كم" : "km"})
-                    </span>
-                  </div>
-                ))
-              : countryAttractions.map((att, idx) => (
-                  <div
-                    key={att.id}
-                    style={{ 
-                      top: `${15 + (idx * 35)}%`, 
-                      left: `${20 + (idx * 45)}%` 
-                    }}
-                    className="absolute z-10 flex flex-col items-center cursor-pointer scale-95 hover:scale-110 transition-all"
-                    onClick={() => setActiveAttraction(att)}
-                  >
-                    <div className={`p-1.5 rounded-full text-white shadow ${
-                      activeAttraction?.id === att.id ? "bg-blue-600 animate-pulse" : "bg-amber-500"
-                    }`}>
-                      <Landmark className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="text-[8px] font-bold bg-white border border-slate-100 text-slate-800 px-1 py-0.2 rounded mt-1 shadow whitespace-nowrap font-mono">
-                      {translateAttractionName(att.name)} ({(idx + 1) * 0.6}{isAr ? " كم" : "km"})
-                    </span>
-                  </div>
-                ))
-            }
-          </div>
-        )}
-      </div>
-
-      {/* Main interactive items listings */}
+      {/* Main Interactive Tab Content */}
       <div className="space-y-3">
-        {exploreTab === "stores" ? (
-          /* Supermarkets sub list */
+        {exploreTab === "stores" && (
           countrySupermarkets.length === 0 ? (
             <div className="text-center py-10 bg-white border border-slate-100 rounded-3xl text-slate-400">
               <Store className="w-8 h-8 text-slate-300 mx-auto mb-2" />
               <p className="text-xs">{t("explore.no_stores")}</p>
             </div>
           ) : (
-            countrySupermarkets.map((sm) => {
+            countrySupermarkets.map((sm: any, idx: number) => {
               const isExpanded = activeSupermarket?.id === sm.id;
               return (
                 <div 
-                  key={sm.id}
+                  key={sm.id || idx}
                   className={`border rounded-3xl overflow-hidden transition-all duration-300 ${
                     isExpanded 
                       ? "bg-white border-blue-200 shadow-sm" 
@@ -313,7 +502,7 @@ export default function ExploreView({
                           {t("explore.prices")} <strong className="text-blue-600 font-bold">{sm.priceTier}</strong>
                         </span>
                       </div>
-                      <h3 className="text-sm font-display font-bold text-slate-800 mt-1">{translateSMName(sm.name)}</h3>
+                      <h3 className="text-sm font-display font-bold text-slate-800 mt-1">{sm.name}</h3>
                       <p className="text-[11px] text-slate-500 flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
                         {sm.hours}
@@ -325,63 +514,63 @@ export default function ExploreView({
 
                   {isExpanded && (
                     <div className="px-4 pb-4 border-t border-slate-100 pt-3.5 space-y-3.5 animate-in fade-in duration-200 text-left">
-                      {/* Overview */}
                       <div className="space-y-1">
                         <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("explore.local_overview")}</span>
                         <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100 text-left">
-                          {translateSMDesc(sm.description)}
+                          {sm.description}
                         </p>
                       </div>
 
-                      {/* Traveler Favorites */}
                       <div className="space-y-1.5">
                         <span className="text-[9px] text-blue-600 font-bold uppercase tracking-wider flex items-center gap-1 justify-start">
                           <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
                           {t("explore.specialties")}
                         </span>
                         <p className="text-xs text-blue-900 leading-relaxed bg-blue-50/50 p-3 rounded-2xl border border-blue-100/30 font-medium text-left">
-                          {translateSMSpecialty(sm.specialty)}
+                          {sm.specialty}
                         </p>
                       </div>
 
-                      {/* Reviews */}
-                      <div className="space-y-2">
-                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("explore.reviews")}</span>
-                        <div className="flex flex-col gap-2">
-                          {sm.reviews.map((rev, rIdx) => (
-                            <div key={rIdx} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-[11px] space-y-1 text-left">
-                              <div className={`flex justify-between items-center ${isAr ? "flex-row-reverse" : "flex-row"}`}>
-                                <span className="font-bold text-slate-700">{translateReviewAuthor(rev.author)}</span>
-                                <div className="flex gap-0.5 text-amber-400">
-                                  {Array.from({ length: rev.rating }).map((_, sIdx) => (
-                                    <Star key={sIdx} className="w-3 h-3 fill-amber-400" />
-                                  ))}
+                      {sm.reviews && sm.reviews.length > 0 && (
+                        <div className="space-y-2">
+                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("explore.reviews")}</span>
+                          <div className="flex flex-col gap-2">
+                            {sm.reviews.map((rev: any, rIdx: number) => (
+                              <div key={rIdx} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-[11px] space-y-1 text-left">
+                                <div className={`flex justify-between items-center ${isAr ? "flex-row-reverse" : "flex-row"}`}>
+                                  <span className="font-bold text-slate-700">{rev.author}</span>
+                                  <div className="flex gap-0.5 text-amber-400">
+                                    {Array.from({ length: rev.rating || 5 }).map((_, sIdx) => (
+                                      <Star key={sIdx} className="w-3 h-3 fill-amber-400" />
+                                    ))}
+                                  </div>
                                 </div>
+                                <p className="text-slate-500 leading-relaxed italic text-left">"{rev.text}"</p>
                               </div>
-                              <p className="text-slate-500 leading-relaxed italic text-left">"{translateReviewText(rev.text)}"</p>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   )}
                 </div>
               );
             })
           )
-        ) : (
-          /* Attractions sub list */
+        )}
+
+        {exploreTab === "landmarks" && (
           countryAttractions.length === 0 ? (
             <div className="text-center py-10 bg-white border border-slate-100 rounded-3xl text-slate-400">
               <Compass className="w-8 h-8 text-slate-300 mx-auto mb-2" />
               <p className="text-xs">{t("explore.no_landmarks")}</p>
             </div>
           ) : (
-            countryAttractions.map((att) => {
+            countryAttractions.map((att: any, idx: number) => {
               const isExpanded = activeAttraction?.id === att.id;
               return (
                 <div 
-                  key={att.id}
+                  key={att.id || idx}
                   className={`border rounded-3xl overflow-hidden transition-all duration-300 ${
                     isExpanded 
                       ? "bg-white border-blue-200 shadow-sm" 
@@ -396,14 +585,14 @@ export default function ExploreView({
                       <div className={`flex items-center gap-2 ${isAr ? "flex-row-reverse" : "flex-row"}`}>
                         <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
                           <Landmark className="w-3 h-3 text-blue-500" />
-                          {translateAttractionCategory(att.category)}
+                          {att.category}
                         </span>
                         <span className="text-[10px] text-slate-400 font-mono flex items-center gap-0.5">
                           <Ticket className="w-3.5 h-3.5 text-slate-400" />
                           {att.ticketPriceLocal === 0 ? (isAr ? "مجاني" : "Free") : `${currentCountry.currencySymbol}${att.ticketPriceLocal}`}
                         </span>
                       </div>
-                      <h3 className="text-sm font-display font-bold text-slate-800 mt-1">{translateAttractionName(att.name)}</h3>
+                      <h3 className="text-sm font-display font-bold text-slate-800 mt-1">{att.name}</h3>
                       <p className="text-[11px] text-slate-500 flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
                         {t("explore.hours_label")} {att.hours}
@@ -415,15 +604,13 @@ export default function ExploreView({
 
                   {isExpanded && (
                     <div className="px-4 pb-4 border-t border-slate-100 pt-3.5 space-y-3.5 animate-in fade-in duration-200 text-left">
-                      {/* Description */}
                       <div className="space-y-1">
                         <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("explore.overview")}</span>
                         <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100 text-left">
-                          {translateAttractionDesc(att.description)}
+                          {att.description}
                         </p>
                       </div>
 
-                      {/* Conversions */}
                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between text-left">
                         <div className="space-y-0.5 text-left">
                           <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("explore.converted_ticket")}</span>
@@ -434,29 +621,274 @@ export default function ExploreView({
                         <Ticket className="w-5 h-5 text-slate-400 shrink-0" />
                       </div>
 
-                      {/* Safety Rules/Warnings */}
-                      <div className="space-y-2 text-left">
-                        <span className="text-[9px] text-red-500 font-bold uppercase tracking-wider flex items-center gap-1 justify-start">
-                          <ShieldAlert className="w-4 h-4 text-red-600" />
-                          {t("explore.scam_tips")}
-                        </span>
-                        <div className="flex flex-col gap-2">
-                          {att.tips.map((tip, idx) => (
-                            <div 
-                              key={idx} 
-                              className={`bg-red-50/50 border-red-500 p-3 rounded-2xl text-[11px] text-slate-600 flex gap-2 ${isAr ? "border-r-2 text-right flex-row-reverse" : "border-l-2 text-left"}`}
-                            >
-                              <div className="text-xs shrink-0 font-bold text-red-500">0{idx + 1}</div>
-                              <span className="leading-relaxed text-left">{translateAttractionTip(tip)}</span>
-                            </div>
-                          ))}
+                      {att.tips && att.tips.length > 0 && (
+                        <div className="space-y-2 text-left">
+                          <span className="text-[9px] text-red-500 font-bold uppercase tracking-wider flex items-center gap-1 justify-start">
+                            <ShieldAlert className="w-4 h-4 text-red-600" />
+                            {t("explore.scam_tips")}
+                          </span>
+                          <div className="flex flex-col gap-2">
+                            {att.tips.map((tip: string, tIdx: number) => (
+                              <div 
+                                key={tIdx} 
+                                className={`bg-red-50/50 border-red-500 p-3 rounded-2xl text-[11px] text-slate-600 flex gap-2 ${isAr ? "border-r-2 text-right flex-row-reverse" : "border-l-2 text-left"}`}
+                              >
+                                <div className="text-xs shrink-0 font-bold text-red-500">0{tIdx + 1}</div>
+                                <span className="leading-relaxed text-left">{tip}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   )}
                 </div>
               );
             })
+          )
+        )}
+
+        {exploreTab === "guide" && (
+          !activeGuide ? (
+            <div className="text-center py-10 bg-white border border-slate-100 rounded-3xl text-slate-400">
+              <Globe className="w-8 h-8 text-blue-500 mx-auto mb-2 animate-bounce" />
+              <p className="text-xs font-bold text-slate-600 mb-1">
+                {isAr ? "تحميل دليل السفر الذكي لـ " : "Loading AI Travel Guide for "} {isAr && currentCountry.nameAr ? currentCountry.nameAr : currentCountry.name}...
+              </p>
+              <p className="text-[10px] text-slate-400">{isAr ? "سيقوم Gemini بإنشاء دليل مخصص كامل الآن!" : "Gemini is generating a complete bespoke guide now!"}</p>
+            </div>
+          ) : (
+            <div className="space-y-4 animate-fade-in text-left">
+              
+              {/* Vibe and Cultural Advisories Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                
+                {/* Cultural Manners Card */}
+                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-2">
+                  <span className="text-[9px] bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1">
+                    <Smile className="w-3.5 h-3.5 text-indigo-600" />
+                    {isAr ? "الثقافة والآداب" : "Culture & Manners"}
+                  </span>
+                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                    {activeGuide.vibe.localVibe}
+                  </p>
+                </div>
+
+                {/* Practical Info Bento Box */}
+                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                  <span className="text-[9px] bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1">
+                    <Info className="w-3.5 h-3.5 text-slate-600" />
+                    {isAr ? "تفاصيل عملية" : "Practical Logistics"}
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "مياه الصنبور" : "Tap Water"}</span>
+                      <p className="font-bold text-slate-800 mt-0.5">{activeGuide.vibe.tapWater}</p>
+                    </div>
+                    <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الإكراميات" : "Tipping"}</span>
+                      <p className="font-bold text-slate-800 mt-0.5">{activeGuide.vibe.tipping}</p>
+                    </div>
+                    <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الدفع بالبطاقة" : "Card vs Cash"}</span>
+                      <p className="font-bold text-slate-800 mt-0.5">{activeGuide.vibe.cardPayment}</p>
+                    </div>
+                    <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "النظافة" : "Hygiene"}</span>
+                      <p className="font-bold text-slate-800 mt-0.5">{activeGuide.vibe.hygiene}</p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Climate and Season Weather Bento panel */}
+              <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <CloudSun className="w-4 h-4 text-amber-500" />
+                  {isAr ? "المناخ وأفضل مواسم الزيارة" : "Climate & Best Times to Visit"}
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+                    <span className="text-indigo-600 font-bold block mb-0.5">{isAr ? "الربيع 🌸" : "Spring 🌸"}</span>
+                    <p className="text-slate-500 leading-snug">{activeGuide.weatherInfo.spring}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+                    <span className="text-red-600 font-bold block mb-0.5">{isAr ? "الصيف ☀️" : "Summer ☀️"}</span>
+                    <p className="text-slate-500 leading-snug">{activeGuide.weatherInfo.summer}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+                    <span className="text-amber-600 font-bold block mb-0.5">{isAr ? "الخريف 🍁" : "Autumn 🍁"}</span>
+                    <p className="text-slate-500 leading-snug">{activeGuide.weatherInfo.autumn}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+                    <span className="text-blue-600 font-bold block mb-0.5">{isAr ? "الشتاء ❄️" : "Winter ❄️"}</span>
+                    <p className="text-slate-500 leading-snug">{activeGuide.weatherInfo.winter}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Visa and Entry Guidelines */}
+              <div className="bg-blue-50/50 border border-blue-100/50 rounded-3xl p-4 flex gap-3">
+                <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                <div className="text-xs space-y-1">
+                  <p className="font-bold text-blue-900">{isAr ? "متطلبات الدخول والتأشيرة" : "Visa & Entry Advisory"}</p>
+                  <p className="text-slate-600 leading-relaxed text-[11px]">{activeGuide.visaInfo}</p>
+                </div>
+              </div>
+
+              {/* Local Travel Phrasebook */}
+              <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Languages className="w-4 h-4 text-emerald-600" />
+                    {isAr ? "القاموس السياحي الذكي" : "Local Travel Phrasebook"}
+                  </h4>
+                  <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-lg font-bold text-slate-600">
+                    {activeGuide.languageName}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {activeGuide.commonWords.map((word, idx) => (
+                    <div key={idx} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex justify-between items-center text-xs gap-3">
+                      <div className="text-left">
+                        <p className="font-mono font-bold text-blue-600 text-[13px]">{word.word}</p>
+                        <p className="text-[10px] text-slate-400 italic">“{word.pronunciation}”</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-slate-800">{word.meaning}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Local Logistics Directories: Airports, Hotels, Restaurants, Transportation */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider block mt-2 px-1">
+                  {isAr ? "الدليل الخدمي المحلي" : "Local Services Directory"}
+                </h4>
+
+                {/* Transportation */}
+                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                  <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                    <Navigation className="w-4 h-4 text-blue-500" />
+                    {isAr ? "المواصلات العامة وكيفية التنقل" : "Public Transit & Transport"}
+                  </h5>
+                  <div className="flex flex-col gap-2">
+                    {activeGuide.transports.map((t, idx) => (
+                      <div key={idx} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-xs space-y-1">
+                        <div className="flex justify-between items-center">
+                          <strong className="text-slate-800">{t.type}</strong>
+                          <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-mono font-bold">{t.cost}</span>
+                        </div>
+                        <p className="text-slate-500 leading-relaxed text-[11px]">{t.description}</p>
+                        {t.tips && <p className="text-blue-700 text-[10px] font-medium">💡 {t.tips}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Restaurants */}
+                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                  <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                    <Utensils className="w-4 h-4 text-orange-500" />
+                    {isAr ? "المطاعم وتجارب التذوق المحلية" : "Recommended Dining & Cuisine"}
+                  </h5>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {activeGuide.restaurants.map((r, idx) => (
+                      <div key={idx} className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs space-y-1">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <strong className="text-slate-800 block text-[13px]">{r.name}</strong>
+                            <span className="text-[10px] text-slate-400">{r.cuisine}</span>
+                          </div>
+                          <span className="text-[10px] font-bold text-blue-600">{r.priceTier}</span>
+                        </div>
+                        <p className="text-slate-500 text-[11px] leading-relaxed">{r.description}</p>
+                        <p className="text-emerald-700 text-[10px] font-medium bg-emerald-50 p-1.5 rounded-xl inline-block">⭐ {isAr ? "الطبق المقترح" : "Specialty"}: {r.specialty}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Hotels */}
+                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                  <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                    <Hotel className="w-4 h-4 text-indigo-500" />
+                    {isAr ? "الفنادق وأماكن الإقامة الموصى بها" : "Recommended Stays & Hotels"}
+                  </h5>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {activeGuide.hotels.map((h, idx) => (
+                      <div key={idx} className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs space-y-1">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <strong className="text-slate-800 block text-[13px]">{h.name}</strong>
+                            <div className="flex gap-0.5 text-amber-400 mt-0.5">
+                              {Array.from({ length: h.stars }).map((_, sIdx) => (
+                                <Star key={sIdx} className="w-3 h-3 fill-amber-400" />
+                              ))}
+                            </div>
+                          </div>
+                          <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold">{h.priceTier}</span>
+                        </div>
+                        <p className="text-slate-500 text-[11px] leading-relaxed">{h.description}</p>
+                        {h.tips && <p className="text-slate-600 text-[10px] italic">💡 {h.tips}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Airports */}
+                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                  <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                    <Plane className="w-4 h-4 text-emerald-500" />
+                    {isAr ? "المطارات وبوابات الدخول" : "Airports & Portals"}
+                  </h5>
+                  <div className="flex flex-col gap-2">
+                    {activeGuide.airports.map((ap, idx) => (
+                      <div key={idx} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-xs flex justify-between items-start gap-3">
+                        <div className="space-y-0.5">
+                          <strong className="text-slate-800 block">{ap.name} ({ap.city})</strong>
+                          <p className="text-slate-500 text-[11px] leading-relaxed">{ap.description}</p>
+                        </div>
+                        <span className="bg-slate-200 text-slate-700 font-mono font-bold text-xs px-2.5 py-1 rounded-xl uppercase tracking-wider shrink-0">
+                          {ap.code}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Emergency Numbers Card */}
+              <div className="bg-red-50 border border-red-100 rounded-3xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-red-800 flex items-center gap-1.5">
+                  <PhoneCall className="w-4 h-4 text-red-600 animate-pulse" />
+                  {isAr ? "خطوط الطوارئ والاتصال السريع" : "Emergency Speed Dial Numbers"}
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                  <div className="bg-white p-2.5 rounded-2xl border border-red-100">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الشرطة" : "Police"}</span>
+                    <a href={`tel:${activeGuide.emergencyNumbers.police}`} className="font-mono font-bold text-red-600 text-sm">{activeGuide.emergencyNumbers.police}</a>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-2xl border border-red-100">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الإسعاف" : "Ambulance"}</span>
+                    <a href={`tel:${activeGuide.emergencyNumbers.ambulance}`} className="font-mono font-bold text-red-600 text-sm">{activeGuide.emergencyNumbers.ambulance}</a>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-2xl border border-red-100">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الإطفاء" : "Fire"}</span>
+                    <a href={`tel:${activeGuide.emergencyNumbers.fire}`} className="font-mono font-bold text-red-600 text-sm">{activeGuide.emergencyNumbers.fire}</a>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-2xl border border-red-100">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "العام" : "General"}</span>
+                    <a href={`tel:${activeGuide.emergencyNumbers.general}`} className="font-mono font-bold text-red-600 text-sm">{activeGuide.emergencyNumbers.general}</a>
+                  </div>
+                </div>
+              </div>
+
+            </div>
           )
         )}
       </div>

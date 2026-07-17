@@ -47,11 +47,18 @@ app.get("/api/health", (req, res) => {
 
 /**
  * Scan Product using Gemini Vision
- * Analyzes an uploaded/captured base64 image (can be barcode or product label).
+ * Analyzes an uploaded/captured base64 image supporting multiple modes.
  */
 app.post("/api/scan-product", async (req, res) => {
   try {
-    const { imageBase64, mimeType = "image/jpeg", targetCountry = "Japan", homeCurrency = "USD" } = req.body;
+    const { 
+      imageBase64, 
+      mimeType = "image/jpeg", 
+      targetCountry = "Japan", 
+      homeCurrency = "USD", 
+      scanMode = "product", 
+      targetLanguage = "English" 
+    } = req.body;
 
     if (!imageBase64) {
       return res.status(400).json({ error: "Missing required field: imageBase64" });
@@ -67,8 +74,51 @@ app.post("/api/scan-product", async (req, res) => {
       },
     };
 
-    const textPart = {
-      text: `Analyze this traveler-scanned product image. 
+    let textPrompt = "";
+    
+    if (scanMode === "barcode") {
+      textPrompt = `Analyze this traveler-scanned image focusing strictly on identifying and decoding any barcodes.
+If a barcode is detected, decode its numerical sequence. Look up what product, brand, and category this barcode belongs to, and estimate its retail price in the local currency of ${targetCountry}.
+If NO barcode is visible, do your best to detect any textual barcodes or identify the product and estimate its standard barcode sequence.
+
+You MUST return a JSON object with the following fields:
+{
+  "barcode": "string (the detected numeric barcode sequence, or null if not found)",
+  "productName": "string (the matching product name)",
+  "brand": "string (the product brand)",
+  "category": "string (must be one of: Food, Beverage, Essentials, Electronics, or Other)",
+  "estimatedLocalPrice": "number (realistic average price in ${targetCountry}'s local currency, e.g. 150)",
+  "currency": "string (3-letter currency code of ${targetCountry}, e.g. JPY)",
+  "description": "string (explain the barcode scan result, product details, and verify if it is a genuine local product)",
+  "isTrusted": "boolean (true if authentic local product)",
+  "confidenceScore": "number (0-100 score)"
+}`;
+    } else if (scanMode === "ocr") {
+      textPrompt = `Read and extract ALL visible text from this image with high-precision optical character recognition (OCR). 
+Preserve the visual structure as much as possible, format headings, paragraphs, or lists, and detect the language of the text.
+
+You MUST return a JSON object with the following fields:
+{
+  "detectedText": "string (raw extracted text with spacing and newlines preserved)",
+  "detectedLanguage": "string (the language of the text, e.g. Japanese, French, Arabic)",
+  "formattedParagraphs": ["string (array of cleanly formatted sentences/paragraphs)"],
+  "summary": "string (a brief summary of what this document/sign is about)"
+}`;
+    } else if (scanMode === "translate") {
+      textPrompt = `Translate all visible foreign text in this image directly into ${targetLanguage}.
+Provide a clean visual translation, explaining the exact meaning of foreign transit notices, food ingredients, menu footnotes, warnings, or caution labels.
+Add a traveler safety advisory if there is any important note (e.g. food allergens, subway entry rules, closed times).
+
+You MUST return a JSON object with the following fields:
+{
+  "originalText": "string (the original foreign phrases found in the image)",
+  "translatedText": "string (the clean, beautifully structured translation into ${targetLanguage})",
+  "detectedLanguage": "string (the detected language of the origin text)",
+  "contextNotes": "string (helpful traveler safety advice, cultural context, dietary warnings, or general guidelines)"
+}`;
+    } else {
+      // Default: "product"
+      textPrompt = `Analyze this traveler-scanned product image. 
 Identify the product name, brand, any visible barcodes (even if they are blurry or angled), and estimate its retail price in the local currency of ${targetCountry}. 
 Also provide a concise description of what the product is (translated to English if the label is foreign), listing any important ingredients/warnings, and giving helpful cultural advice or savings tips for travelers buying this in ${targetCountry}.
 
@@ -83,8 +133,10 @@ You MUST return a JSON object with the following fields:
   "description": "string (a concise, helpful traveler guide: explain what the product is, translate foreign ingredients/allergies, and provide useful tips for visiting supermarkets)",
   "isTrusted": "boolean (whether this product matches common safe retail brands)",
   "confidenceScore": "number (0-100 scan confidence rating)"
-}`,
-    };
+}`;
+    }
+
+    const textPart = { text: textPrompt };
 
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
@@ -102,6 +154,163 @@ You MUST return a JSON object with the following fields:
     console.error("Error scanning product:", error);
     res.status(500).json({ 
       error: "Failed to scan product", 
+      details: error.message || error 
+    });
+  }
+});
+
+/**
+ * Generate a comprehensive, beautiful country guide dynamically using Gemini
+ */
+app.post("/api/country-guide", async (req, res) => {
+  try {
+    const { countryName, userLanguage = "ar" } = req.body;
+
+    if (!countryName) {
+      return res.status(400).json({ error: "Missing required field: countryName" });
+    }
+
+    const ai = getAiClient();
+
+    const systemPrompt = `You are Nomi's elite AI Travel Intelligence expert. 
+Generate an extremely comprehensive, premium, fully realized travel guide for the country: "${countryName}".
+The traveler speaks "${userLanguage === "ar" ? "Arabic" : "English"}", so provide descriptions, tips, names, and guidelines in a bilingual format (specifically, descriptions and custom details must be written in the specified user language, while original local names can be in parenthetical or local scripts).
+
+You MUST return a strictly formatted JSON object matching the following TypeScript schema:
+{
+  "code": "string (2-letter uppercase ISO country code, e.g. JP, FR, BR, EG, IN)",
+  "name": "string (English country name, e.g. Japan, France, Egypt)",
+  "nameAr": "string (Arabic country name, e.g. اليابان، فرنسا، مصر)",
+  "flag": "string (Emoji flag, e.g. 🇯🇵, 🇫🇷, 🇪🇬)",
+  "currency": "string (3-letter currency code, e.g. JPY, EUR, EGP, BRL)",
+  "currencySymbol": "string (currency symbol, e.g. ¥, €, E£, R$)",
+  "exchangeRateToUSD": "number (approximate exchange rate relative to 1 USD, i.e. how many units of this currency equal 1 USD, e.g. 155.2 or 0.92 or 47.5)",
+  "languageName": "string (official language of the country)",
+  "commonWords": [
+    { "word": "string (foreign word/phrase)", "meaning": "string (meaning in traveler's language)", "pronunciation": "string (how to pronounce it)" }
+  ],
+  "emergencyNumbers": {
+    "police": "string",
+    "ambulance": "string",
+    "fire": "string",
+    "general": "string"
+  },
+  "visaInfo": "string (brief summary of visa rules and entry requirements)",
+  "weatherInfo": {
+    "spring": "string (average weather conditions)",
+    "summer": "string (average weather conditions)",
+    "autumn": "string (average weather conditions)",
+    "winter": "string (average weather conditions)"
+  },
+  "vibe": {
+    "hygiene": "string (hygiene level review)",
+    "tipping": "string (tipping culture rules)",
+    "tapWater": "string (tap water safety details)",
+    "cardPayment": "string (card acceptance levels vs cash)",
+    "localVibe": "string (cultural safety advice and traveler manners)"
+  },
+  "landmarks": [
+    {
+      "id": "string (unique kebab-case ID starting with 'att-', e.g. att-pyramids)",
+      "name": "string (name of landmark)",
+      "category": "string (e.g. Historical, Nature, Cultural, Modern)",
+      "ticketPriceLocal": "number (average price in local currency, use 0 for free)",
+      "description": "string (compelling traveler description)",
+      "tips": ["string (crucial safety or booking tips for travelers)"],
+      "hours": "string (typical opening hours)"
+    }
+  ],
+  "airports": [
+    { "name": "string (airport name)", "code": "string (3-letter IATA code)", "city": "string (serving city)", "description": "string (traveler tips)" }
+  ],
+  "hotels": [
+    { "name": "string (hotel example name)", "stars": "number (1-5 star rating)", "priceTier": "string (e.g. Budget, Mid-range, Luxury)", "description": "string", "tips": "string" }
+  ],
+  "restaurants": [
+    { "name": "string (restaurant name)", "cuisine": "string (cuisine type)", "specialty": "string (recommended dish)", "priceTier": "string", "description": "string" }
+  ],
+  "transports": [
+    { "type": "string (e.g. Train, Metro, Taxi, Bus)", "cost": "string (estimated average fare)", "description": "string (how to use it)", "tips": "string" }
+  ],
+  "supermarkets": [
+    {
+      "id": "string (unique kebab-case ID starting with 'sm-', e.g. sm-aeon)",
+      "name": "string (name of supermarket)",
+      "trustScore": "number (0-100 rating)",
+      "priceTier": "string ($, $$, or $$$)",
+      "hours": "string (opening hours, e.g. 24/7)",
+      "specialty": "string (highly recommended items/savings to buy there)",
+      "description": "string (overview of this market and savings tips)"
+    }
+  ]
+}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: systemPrompt,
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    const resultText = response.text || "{}";
+    const data = JSON.parse(resultText);
+    res.json(data);
+
+  } catch (error: any) {
+    console.error("Error generating country guide:", error);
+    res.status(500).json({ 
+      error: "Failed to generate country guide", 
+      details: error.message || error 
+    });
+  }
+});
+
+/**
+ * Interactive AI Travel Assistant chatbot
+ */
+app.post("/api/chat-assistant", async (req, res) => {
+  try {
+    const { messages, currentCountry, homeCountry, userLanguage = "ar" } = req.body;
+
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: "Missing or invalid field: messages" });
+    }
+
+    const ai = getAiClient();
+
+    // Map message history to Gemini SDK format
+    const contents = messages.map((m) => ({
+      role: m.role === "user" ? "user" : "model",
+      parts: [{ text: m.content }],
+    }));
+
+    const systemInstruction = `You are Nomi's elite AI Travel Assistant (مساعد السفر الذكي). 
+You help international travelers plan their journeys, explore destinations, understand cultural etiquettes, find cheap product alternatives, and bypass tourist price inflation.
+You are chatting with a traveler whose current active destination is ${currentCountry?.name || "their selected country"} (${currentCountry?.code || "N/A"}) and whose home base is ${homeCountry?.name || "their residence"} (${homeCountry?.code || "N/A"}).
+The official local currency of the destination is ${currentCountry?.currency || "N/A"} (${currentCountry?.currencySymbol || ""}), and their home currency is ${homeCountry?.currency || "N/A"} (${homeCountry?.currencySymbol || ""}).
+The current exchange rate is 1 ${homeCountry?.currency || "USD"} = ${(currentCountry?.exchangeRateToUSD / homeCountry?.exchangeRateToUSD || 1.0).toFixed(3)} ${currentCountry?.currency || "local units"}.
+
+Your behavior guidelines:
+1. Always converse in the user's language: ${userLanguage === "ar" ? "Arabic (العربية)" : "English"}. Speak clearly, politely, and helpfully.
+2. Provide concrete recommendations, local market advice, and price comparison tips.
+3. If they ask about product prices or alternatives, suggest cheaper options in local supermarkets (like 7-Eleven, Lawson, Aeon in Japan; Coop, Conad in Italy; Carrefour, Monoprix in France; Big C, Lotus's in Thailand) rather than tourist gift shops.
+4. Keep your replies concise, scannable, and formatted beautifully using standard Markdown. Avoid long blocks of text. Use bullet points and bold headers.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents,
+      config: {
+        systemInstruction,
+      },
+    });
+
+    res.json({ reply: response.text || "" });
+
+  } catch (error: any) {
+    console.error("Error in chat assistant:", error);
+    res.status(500).json({ 
+      error: "Failed to generate chat reply", 
       details: error.message || error 
     });
   }
