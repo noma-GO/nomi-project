@@ -139,36 +139,40 @@ export default function App() {
     let unsubProfile: (() => void) | null = null;
     let unsubTrans: (() => void) | null = null;
 
-    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       console.log("[NOMI APP] Auth state changed. User:", currentUser ? currentUser.uid : "GUEST");
       if (currentUser) {
         setFbUser(currentUser);
         
-        // Check/Create User Profile document in Firestore
+        // Check/Create User Profile document in Firestore asynchronously (DO NOT AWAIT inside onAuthStateChanged!)
         const userDocRef = doc(db, "users", currentUser.uid);
-        try {
-          console.log("[NOMI APP] Checking if profile exists in Firestore for uid:", currentUser.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          if (!userDocSnap.exists()) {
-            console.log("[NOMI APP] Profile document does not exist. Creating default profile...");
-            await setDoc(userDocRef, {
-              uid: currentUser.uid,
-              displayName: currentUser.displayName || "Bernard Brewer",
-              email: currentUser.email || null,
-              xp: 950, // default Level 4
-              visitedAttractions: ["att-jp-2"],
-              createdAt: new Date().toISOString()
-            });
-            console.log("[NOMI APP] Default profile document created.");
-          } else {
-            console.log("[NOMI APP] Profile document found in Firestore.");
+        (async () => {
+          try {
+            console.log("[NOMI APP] Checking if profile exists in Firestore for uid:", currentUser.uid);
+            const userDocSnap = await getDoc(userDocRef);
+            if (!userDocSnap.exists()) {
+              console.log("[NOMI APP] Profile document does not exist. Creating default profile...");
+              await setDoc(userDocRef, {
+                uid: currentUser.uid,
+                displayName: currentUser.displayName || "Bernard Brewer",
+                email: currentUser.email || null,
+                xp: 950, // default Level 4
+                visitedAttractions: ["att-jp-2"],
+                createdAt: new Date().toISOString()
+              });
+              console.log("[NOMI APP] Default profile document created.");
+            } else {
+              console.log("[NOMI APP] Profile document found in Firestore.");
+            }
+          } catch (err) {
+            console.error("[NOMI APP] Error initializing user profile doc asynchronously:", err);
           }
-        } catch (err) {
-          console.error("Error initializing user profile doc:", err);
-        }
+        })();
 
         // Listen to User Profile Changes in Real-Time
+        console.log("[NOMI APP] Registering onSnapshot listener for profile...");
         unsubProfile = onSnapshot(userDocRef, (docSnap) => {
+          console.log("[NOMI APP] Profile snap received. Exists:", docSnap.exists());
           if (docSnap.exists()) {
             const data = docSnap.data();
             setUserProfile({
@@ -180,7 +184,7 @@ export default function App() {
           }
           setLoadingProfile(false);
         }, (err) => {
-          console.warn("Profile onSnapshot failed, using in-memory guest profile fallback:", err);
+          console.warn("[NOMI APP] Profile onSnapshot failed, using in-memory guest profile fallback:", err);
           setUserProfile({
             displayName: currentUser.displayName || "Bernard Brewer",
             email: currentUser.email || null,
@@ -191,21 +195,24 @@ export default function App() {
         });
 
         // Listen to User Translations Changes in Real-Time
+        console.log("[NOMI APP] Registering onSnapshot listener for translations...");
         const transQuery = query(
           collection(db, "users", currentUser.uid, "translations"), 
           orderBy("timestamp", "desc")
         );
         unsubTrans = onSnapshot(transQuery, (snap) => {
+          console.log("[NOMI APP] Translations snap received, size:", snap.size);
           const logs: TranslationLog[] = [];
           snap.forEach((d) => {
             logs.push({ id: d.id, ...d.data() } as TranslationLog);
           });
           setTranslationLogs(logs);
         }, (err) => {
-          console.warn("Translation logs subscription fallback:", err);
+          console.warn("[NOMI APP] Translation logs subscription fallback:", err);
           // Fallback if index isn't ready yet or simple query is needed
           const simpleQuery = collection(db, "users", currentUser.uid, "translations");
           onSnapshot(simpleQuery, (simpleSnap) => {
+            console.log("[NOMI APP] Simple translations snap received, size:", simpleSnap.size);
             const logs: TranslationLog[] = [];
             simpleSnap.forEach((d) => {
               logs.push({ id: d.id, ...d.data() } as TranslationLog);
@@ -214,11 +221,12 @@ export default function App() {
             logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
             setTranslationLogs(logs);
           }, (simpleErr) => {
-            console.warn("Simple translation logs fallback failed too:", simpleErr);
+            console.warn("[NOMI APP] Simple translation logs fallback failed too:", simpleErr);
           });
         });
 
       } else {
+        console.log("[NOMI APP] User is null. Defaulting to local guest state...");
         setFbUser(null);
         // Default to a complete local guest profile so that the application remains fully functional for offline guests
         setUserProfile({
@@ -230,11 +238,12 @@ export default function App() {
         setLoadingProfile(false);
 
         // Sign in anonymously if no current session
-        try {
-          await signInAnonymously(auth);
-        } catch (err) {
-          console.warn("Anonymous authentication is restricted in Firebase console. Continuing in local guest mode gracefully:", err);
-        }
+        console.log("[NOMI APP] Triggering anonymous sign-in...");
+        signInAnonymously(auth).then(() => {
+          console.log("[NOMI APP] Anonymous sign-in initiated successfully.");
+        }).catch((err) => {
+          console.warn("[NOMI APP] Anonymous authentication is restricted in Firebase console. Continuing in local guest mode gracefully:", err);
+        });
       }
     });
 
