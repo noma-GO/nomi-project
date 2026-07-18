@@ -1,10 +1,32 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Sun, ShieldCheck, Info, Search, Camera, Languages, 
   Sparkles, Landmark, ArrowRightLeft, Lightbulb
 } from "lucide-react";
 import { Country, Product } from "../types";
 import { useLanguage } from "../lib/i18n";
+
+// Responsive window dimension listener hook
+function useWindowDimensions() {
+  const [windowDimensions, setWindowDimensions] = useState({
+    width: typeof window !== "undefined" ? window.innerWidth : 360,
+    height: typeof window !== "undefined" ? window.innerHeight : 640,
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    function handleResize() {
+      setWindowDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  return windowDimensions;
+}
 
 interface HomeViewProps {
   currentCountry: Country;
@@ -25,6 +47,7 @@ export default function HomeView({
   const [searchQuery, setSearchQuery] = useState("");
   const { t, language } = useLanguage();
   const isAr = language === "ar";
+  const { width } = useWindowDimensions();
 
   // Calculate live conversion
   const getCalculatorResult = () => {
@@ -137,69 +160,91 @@ export default function HomeView({
   const vibe = getVibeAdvisory();
 
   return (
-    <div className="flex-1 w-full max-w-lg mx-auto flex flex-col space-y-4 bg-slate-50 text-slate-900 pb-20 px-1" id="home-view-container">
+    <div className="flex-1 w-full max-w-lg mx-auto flex flex-col space-y-4 bg-slate-50 text-slate-900 pb-24 px-4 pt-1" id="home-view-container">
       
+      {/* Dynamic Style Injection for Bottom Navigation Bar (72dp height, 24dp icons) */}
+      <style>{`
+        #nomi-app-root .fixed.bottom-0 {
+          height: 72px !important;
+          padding-top: 0px !important;
+          padding-bottom: 0px !important;
+        }
+        #nomi-app-root .fixed.bottom-0 nav {
+          height: 72px !important;
+        }
+        #nomi-app-root .fixed.bottom-0 nav svg {
+          width: 24px !important;
+          height: 24px !important;
+        }
+        #nomi-app-root .fixed.bottom-0 nav span {
+          font-size: 10px !important;
+        }
+      `}</style>
+
       {/* BUILD TEST 2026 */}
-      <div className="bg-red-100 border-4 border-red-600 rounded-3xl p-4 text-center shadow-lg shrink-0" id="build-test-2026-card">
+      <div className="bg-red-100 border-4 border-red-600 rounded-[24px] p-4 text-center shadow-lg shrink-0" id="build-test-2026-card">
         <h1 className="text-[40px] font-black text-red-600 leading-none tracking-wider select-text animate-bounce">
           BUILD TEST 2026
         </h1>
       </div>
 
-      {/* 1. Dynamic Greeting Header Card */}
-      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-3xl p-5 shadow-lg relative overflow-hidden shrink-0 transition-all duration-300">
+      {/* 1. Dynamic Greeting Header Card - Height 180px */}
+      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-[24px] p-4 shadow-md relative overflow-hidden shrink-0 h-[180px] flex flex-col justify-between" id="home-greeting-header">
         <div className="absolute right-[-20px] top-[-20px] w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
         <div className="absolute left-[20%] bottom-[-40px] w-40 h-40 bg-sky-400/20 rounded-full blur-3xl"></div>
 
         <div className="relative z-10 flex justify-between items-start">
           <div className="space-y-1 text-left">
-            <span className="inline-block text-[10px] bg-white/20 text-white border border-white/20 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
-              {t("home.explorer_level")}
-            </span>
-            <h2 className="text-2xl font-bold tracking-tight mt-1">{t("home.greeting")}</h2>
-            <p className="text-xs text-blue-100/95 font-medium leading-relaxed">
-              {t("home.exploring_in")}{" "}
-              <strong className="text-white bg-white/15 px-2 py-0.5 rounded-lg inline-flex items-center gap-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="inline-block text-[10px] bg-white/15 text-white border border-white/10 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                {t("home.explorer_level")}
+              </span>
+              {/* Country Name Elegant Small Chip */}
+              <span className="inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white border border-white/25 px-2 py-0.5 rounded-full text-[10px] font-black transition-all cursor-pointer active:scale-95 shadow-sm" id="header-country-chip">
                 <span>{currentCountry.flag}</span>
                 <span>{isAr ? (currentCountry.nameAr || currentCountry.name) : currentCountry.name}</span>
-              </strong>
+              </span>
+            </div>
+            <h2 className="text-xl font-bold tracking-tight mt-1 leading-none">{t("home.greeting")}</h2>
+            <p className="text-[11px] text-blue-100/95 font-medium leading-relaxed mt-1">
+              {t("home.exploring_in")}{" "}{isAr ? (currentCountry.nameAr || currentCountry.name) : currentCountry.name}
             </p>
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-2.5 text-center border border-white/10 shrink-0">
-            <Sun className="w-5 h-5 text-yellow-300 mx-auto animate-pulse" />
-            <span className="text-[10px] block font-bold text-white mt-1">{isAr ? "مشمس 24° م" : "24°C Sunny"}</span>
+          <div className="bg-white/10 backdrop-blur-md rounded-xl px-2 py-1 text-center border border-white/10 shrink-0 flex items-center gap-1">
+            <Sun className="w-3.5 h-3.5 text-yellow-300 animate-pulse" />
+            <span className="text-[10px] font-bold text-white">{isAr ? "مشمس 24° م" : "24°C Sunny"}</span>
           </div>
         </div>
 
         {/* Level XP Bar */}
-        <div className="mt-4 pt-4 border-t border-white/10 relative z-10">
-          <div className="flex justify-between text-[10px] font-semibold text-blue-100 mb-1.5">
+        <div className="border-t border-white/10 pt-2 relative z-10">
+          <div className="flex justify-between text-[10px] font-semibold text-blue-100 mb-1">
             <span>{t("home.progress_lvl", { level: 5 })}</span>
             <span className="font-bold">{isAr ? "2,450 / 3,000 نقطة خبرة" : "2,450 / 3,000 XP"}</span>
           </div>
-          <div className="w-full h-2 bg-black/20 rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-black/20 rounded-full overflow-hidden">
             <div className="h-full bg-sky-300 rounded-full transition-all duration-500" style={{ width: "81%" }}></div>
           </div>
         </div>
       </div>
 
-      {/* 2. Global Live Search Interface */}
-      <div className="relative shrink-0" id="global-search-container">
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-1 shadow-sm flex items-center gap-2 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-          <div className="p-2.5 text-slate-400">
-            <Search className="w-4 h-4" />
+      {/* 2. Global Live Search Interface - Height 56px, corner-radius 28px, left search icon, soft shadow */}
+      <div className="relative shrink-0 w-full" id="global-search-container">
+        <div className="bg-white border border-slate-200/80 rounded-[28px] px-4 shadow-sm flex items-center gap-2 h-[56px] focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+          <div className="text-slate-400">
+            <Search className="w-5 h-5" />
           </div>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={isAr ? "ابحث عن منتج، علامة تجارية أو فئة..." : "Search products, brands, barcodes..."}
-            className={`flex-1 bg-transparent text-xs text-slate-800 focus:outline-none font-medium py-2 ${isAr ? "text-right pr-2" : "text-left pl-2"}`}
+            className={`flex-1 bg-transparent text-xs text-slate-800 focus:outline-none font-semibold ${isAr ? "text-right pr-2" : "text-left pl-2"}`}
           />
           {searchQuery && (
             <button 
               onClick={() => setSearchQuery("")}
-              className="text-[10px] text-slate-400 hover:text-slate-600 px-3 font-bold transition-colors"
+              className="text-[10px] text-slate-400 hover:text-slate-600 px-2 font-bold transition-colors"
             >
               {isAr ? "مسح" : "Clear"}
             </button>
@@ -261,24 +306,24 @@ export default function HomeView({
         ))}
       </div>
 
-      {/* 4. Service Access Cards Grid */}
-      <div className="grid grid-cols-2 gap-3 shrink-0" id="service-access-grid">
+      {/* 4. Service Access Cards Grid - 2 Column Grid, height 110px, border-radius 24px, padding 16px, gap 16px, icon size 32px, title 16sp bold, description 13sp */}
+      <div className="grid grid-cols-2 gap-4 shrink-0" id="service-access-grid">
         
         {/* Card 1: Camera Scanner */}
         <button
           onClick={() => onNavigate("scan")}
-          className="bg-white border border-slate-200/80 p-4 rounded-3xl text-left shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all flex flex-col justify-between h-28 group relative overflow-hidden"
+          className="bg-white border border-slate-200/80 p-4 rounded-[24px] text-left shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all flex flex-col justify-between h-[110px] w-full group relative overflow-hidden cursor-pointer animate-fade-in"
         >
           <div className="absolute right-[-10px] bottom-[-10px] w-12 h-12 bg-blue-500/5 rounded-full group-hover:scale-125 transition-transform duration-300"></div>
-          <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-            <Camera className="w-5 h-5 group-hover:scale-105 transition-transform" />
+          <div className="w-[32px] h-[32px] rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+            <Camera className="w-[18px] h-[18px] group-hover:scale-105 transition-transform" />
           </div>
-          <div>
-            <h4 className="text-xs font-bold text-slate-800 leading-tight">
+          <div className="text-left w-full mt-1.5">
+            <h4 className="text-[16px] font-bold text-slate-800 leading-none truncate">
               {isAr ? "ماسح الكاميرا الذكي" : "AI Camera Scanner"}
             </h4>
-            <p className="text-[9px] text-slate-400 mt-1 line-clamp-1">
-              {isAr ? "قراءة باركود وترجمة لافتات" : "Barcode, OCR & translation"}
+            <p className="text-[13px] text-slate-400 mt-1 truncate">
+              {isAr ? "لافتات وباركود" : "Barcode & signs"}
             </p>
           </div>
         </button>
@@ -286,18 +331,18 @@ export default function HomeView({
         {/* Card 2: AI Translator */}
         <button
           onClick={() => onNavigate("translate")}
-          className="bg-white border border-slate-200/80 p-4 rounded-3xl text-left shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all flex flex-col justify-between h-28 group relative overflow-hidden"
+          className="bg-white border border-slate-200/80 p-4 rounded-[24px] text-left shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all flex flex-col justify-between h-[110px] w-full group relative overflow-hidden cursor-pointer animate-fade-in"
         >
           <div className="absolute right-[-10px] bottom-[-10px] w-12 h-12 bg-indigo-500/5 rounded-full group-hover:scale-125 transition-transform duration-300"></div>
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <Languages className="w-5 h-5 group-hover:scale-105 transition-transform" />
+          <div className="w-[32px] h-[32px] rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+            <Languages className="w-[18px] h-[18px] group-hover:scale-105 transition-transform" />
           </div>
-          <div>
-            <h4 className="text-xs font-bold text-slate-800 leading-tight">
+          <div className="text-left w-full mt-1.5">
+            <h4 className="text-[16px] font-bold text-slate-800 leading-none truncate">
               {isAr ? "مترجم نومي الفوري" : "AI Live Translator"}
             </h4>
-            <p className="text-[9px] text-slate-400 mt-1 line-clamp-1">
-              {isAr ? "ترجمة كتابة، صوت ونصوص" : "Text, voice & sign translation"}
+            <p className="text-[13px] text-slate-400 mt-1 truncate">
+              {isAr ? "ترجمة كتابة وصوت" : "Text & voice translation"}
             </p>
           </div>
         </button>
@@ -305,19 +350,19 @@ export default function HomeView({
         {/* Card 3: AI Assistant */}
         <button
           onClick={() => onNavigate("assistant")}
-          className="bg-slate-900 text-white p-4 rounded-3xl text-left shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all flex flex-col justify-between h-28 group relative overflow-hidden border border-slate-800"
+          className="bg-slate-900 text-white p-4 rounded-[24px] text-left shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all flex flex-col justify-between h-[110px] w-full group relative overflow-hidden border border-slate-800 cursor-pointer animate-fade-in"
         >
           <div className="absolute right-[-10px] bottom-[-10px] w-14 h-14 bg-blue-500/10 rounded-full group-hover:scale-125 transition-transform duration-300"></div>
-          <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
-            <Sparkles className="w-4.5 h-4.5 text-amber-300 animate-pulse" />
+          <div className="w-[32px] h-[32px] rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm shrink-0">
+            <Sparkles className="w-[16px] h-[16px] text-amber-300 animate-pulse" />
           </div>
-          <div>
-            <h4 className="text-xs font-bold text-white leading-tight flex items-center gap-1">
+          <div className="text-left w-full mt-1.5">
+            <h4 className="text-[16px] font-bold text-white leading-none truncate flex items-center gap-1">
               {isAr ? "المساعد السياحي" : "AI Travel Assistant"}
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
             </h4>
-            <p className="text-[9px] text-slate-400 mt-1 line-clamp-1">
-              {isAr ? "دليل وثقافة وتوفير مال" : "Guides, culture & safety hacks"}
+            <p className="text-[13px] text-slate-400 mt-1 truncate">
+              {isAr ? "أدلة أمان وتوفير المال" : "Guides & saving hacks"}
             </p>
           </div>
         </button>
@@ -325,26 +370,26 @@ export default function HomeView({
         {/* Card 4: Country Guides */}
         <button
           onClick={() => onNavigate("explore")}
-          className="bg-white border border-slate-200/80 p-4 rounded-3xl text-left shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all flex flex-col justify-between h-28 group relative overflow-hidden"
+          className="bg-white border border-slate-200/80 p-4 rounded-[24px] text-left shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all flex flex-col justify-between h-[110px] w-full group relative overflow-hidden cursor-pointer animate-fade-in"
         >
           <div className="absolute right-[-10px] bottom-[-10px] w-12 h-12 bg-emerald-500/5 rounded-full group-hover:scale-125 transition-transform duration-300"></div>
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <Landmark className="w-5 h-5 group-hover:scale-105 transition-transform" />
+          <div className="w-[32px] h-[32px] rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+            <Landmark className="w-[18px] h-[18px] group-hover:scale-105 transition-transform" />
           </div>
-          <div>
-            <h4 className="text-xs font-bold text-slate-800 leading-tight">
+          <div className="text-left w-full mt-1.5">
+            <h4 className="text-[16px] font-bold text-slate-800 leading-none truncate">
               {isAr ? "المواقع والخرائط" : "Landmarks & Guides"}
             </h4>
-            <p className="text-[9px] text-slate-400 mt-1 line-clamp-1">
-              {isAr ? "سوبرماركت موثوق ومعالم" : "Supermarkets, malls & sights"}
+            <p className="text-[13px] text-slate-400 mt-1 truncate">
+              {isAr ? "سوبرماركت ومعالم" : "Supermarkets & sights"}
             </p>
           </div>
         </button>
 
       </div>
 
-      {/* 5. Currency Converter Widget */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-sm space-y-3 shrink-0" id="currency-converter-card">
+      {/* 5. Currency Converter Widget - 24dp rounded corners */}
+      <div className="bg-white border border-slate-200/80 rounded-[24px] p-4 shadow-sm space-y-3 shrink-0" id="currency-converter-card">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-1.5">
             <div className="p-1.5 bg-blue-50 text-blue-600 rounded-xl">
@@ -396,8 +441,8 @@ export default function HomeView({
         </p>
       </div>
 
-      {/* 6. Cultural Vibe Checklist */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-sm space-y-3 shrink-0" id="cultural-advisory-board">
+      {/* 6. Cultural Vibe Checklist - 24dp rounded corners */}
+      <div className="bg-white border border-slate-200/80 rounded-[24px] p-4 shadow-sm space-y-3 shrink-0" id="cultural-advisory-board">
         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           <ShieldCheck className="w-4.5 h-4.5 text-emerald-600" />
           {t("home.checklist_title", { country: isAr ? (currentCountry.nameAr || currentCountry.name) : t(currentCountry.name) })}
@@ -431,8 +476,8 @@ export default function HomeView({
         </div>
       </div>
 
-      {/* 7. Recent Scans Container */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-sm space-y-3 shrink-0" id="recent-scans-panel">
+      {/* 7. Recent Scans Container - 24dp rounded corners */}
+      <div className="bg-white border border-slate-200/80 rounded-[24px] p-4 shadow-sm space-y-3 shrink-0" id="recent-scans-panel">
         <div className="flex justify-between items-center">
           <h3 className="text-sm font-bold text-slate-800">{t("home.recent_scans")}</h3>
           <button onClick={() => onNavigate("scan")} className="text-xs font-bold text-blue-600 hover:underline">
@@ -476,8 +521,8 @@ export default function HomeView({
         )}
       </div>
 
-      {/* 8. Contribute / Share Card */}
-      <div className="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-100/60 rounded-3xl p-4 flex gap-4 items-center justify-between shadow-sm shrink-0" id="contribution-card">
+      {/* 8. Contribute / Share Card - 24dp rounded corners */}
+      <div className="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-100/60 rounded-[24px] p-4 flex gap-4 items-center justify-between shadow-sm shrink-0" id="contribution-card">
         <div className="space-y-0.5 max-w-[210px] text-left">
           <p className="text-xs font-bold text-blue-900">{t("home.spotted_cheaper")}</p>
           <p className="text-[10px] text-slate-500 font-medium leading-normal">{t("home.spotted_desc")}</p>
