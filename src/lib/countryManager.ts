@@ -305,6 +305,10 @@ export const CountryManager = {
 
   // Helper to calculate timezone differences (destination timezone compared to home timezone)
   getTimeDifference(fromTimeZone: TimeZoneModel, toTimeZone: TimeZoneModel): string {
+    if (!fromTimeZone || typeof fromTimeZone.offset !== "number" || !toTimeZone || typeof toTimeZone.offset !== "number") {
+      console.warn("[NOMI COUNTRY MANAGER] getTimeDifference called with invalid/undefined timezone:", { fromTimeZone, toTimeZone });
+      return "Same time";
+    }
     const diff = toTimeZone.offset - fromTimeZone.offset;
     if (diff === 0) return "Same time";
     const sign = diff > 0 ? "+" : "";
@@ -314,6 +318,10 @@ export const CountryManager = {
   // Helper to get local time in a country's timezone
   getLocalTime(timeZone: TimeZoneModel): string {
     const now = new Date();
+    if (!timeZone || typeof timeZone.offset !== "number") {
+      console.warn("[NOMI COUNTRY MANAGER] getLocalTime called with invalid/undefined timezone:", timeZone);
+      return now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+    }
     const utc = now.getTime() + now.getTimezoneOffset() * 60000;
     const local = new Date(utc + 3600000 * timeZone.offset);
     return local.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
