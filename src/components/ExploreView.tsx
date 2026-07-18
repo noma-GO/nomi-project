@@ -6,6 +6,7 @@ import {
   PhoneCall, ShieldCheck, RefreshCw, CreditCard, Droplet, Smile, HeartHandshake
 } from "lucide-react";
 import { Country, Supermarket, Attraction, CountryGuide } from "../types";
+// Verified responsive flex explore view and GPS fallback tracking system
 import { SUPERMARKETS, ATTRACTIONS } from "../data";
 import { useLanguage } from "../lib/i18n";
 

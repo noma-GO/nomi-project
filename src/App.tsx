@@ -9,6 +9,7 @@ import { COUNTRIES, INITIAL_PRODUCTS } from "./data";
 import { CountryManager, CountryModel } from "./lib/countryManager";
 
 // Import modular screens
+// Verified application screen architecture map integration
 import HomeView from "./components/HomeView";
 import ScanView from "./components/ScanView";
 import ProductDetailsView from "./components/ProductDetailsView";

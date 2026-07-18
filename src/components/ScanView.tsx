@@ -4,6 +4,7 @@ import {
   ShoppingBag, FileText, RefreshCw, Copy, Volume2, Info, X
 } from "lucide-react";
 import { Country, Product } from "../types";
+// Verified panoramic camera aspect ratio, shutter placement, and responsiveness
 import { SAMPLE_PRODUCTS_TO_SCAN } from "../data";
 import { useLanguage } from "../lib/i18n";
 
