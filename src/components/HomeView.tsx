@@ -181,13 +181,6 @@ export default function HomeView({
         }
       `}</style>
 
-      {/* BUILD TEST 2026 */}
-      <div className="bg-red-100 border-4 border-red-600 rounded-[24px] p-4 text-center shadow-lg shrink-0" id="build-test-2026-card">
-        <h1 className="text-[40px] font-black text-red-600 leading-none tracking-wider select-text animate-bounce">
-          BUILD TEST 2026
-        </h1>
-      </div>
-
       {/* 1. Dynamic Greeting Header Card - Height 180px */}
       <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-[24px] p-4 shadow-md relative overflow-hidden shrink-0 h-[180px] flex flex-col justify-between" id="home-greeting-header">
         <div className="absolute right-[-20px] top-[-20px] w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
