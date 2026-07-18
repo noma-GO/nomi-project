@@ -4,7 +4,6 @@ import {
   ShoppingBag, FileText, RefreshCw, Copy, Volume2, Info, X
 } from "lucide-react";
 import { Country, Product } from "../types";
-// Verified panoramic camera aspect ratio, shutter placement, and responsiveness
 import { SAMPLE_PRODUCTS_TO_SCAN } from "../data";
 import { useLanguage } from "../lib/i18n";
 
@@ -31,12 +30,11 @@ export default function ScanView({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Scan Modes: product, barcode, ocr, translate
-  const [scanMode, setScanMode] = useState<"product" | "barcode" | "ocr" | "translate">("product");
+  // Scan Modes: product, ocr, translate
+  const [scanMode, setScanMode] = useState<"product" | "ocr" | "translate">("product");
 
   // Real Camera States
   const [cameraActive, setCameraActive] = useState(false);
-  const [cameraPermission, setCameraPermission] = useState<"prompt" | "granted" | "denied" | "unsupported">("prompt");
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -49,7 +47,9 @@ export default function ScanView({
 
   // Restart camera when facing mode changes
   useEffect(() => {
-    startCamera(facingMode);
+    if (cameraActive) {
+      startCamera(facingMode);
+    }
     return () => {
       stopCamera();
     };
@@ -57,17 +57,15 @@ export default function ScanView({
 
   const startCamera = async (mode: "user" | "environment" = "environment") => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setCameraPermission("unsupported");
       setError(
         isAr 
-          ? "المتصفح لا يدعم الوصول المباشر إلى كاميرا الويب." 
+          ? "المتصفح الحالي لا يدعم الوصول إلى الكاميرا المباشرة." 
           : "Webcam streaming is not supported by this browser."
       );
       return;
     }
 
     try {
-      setCameraPermission("prompt");
       setError(null);
       
       if (streamRef.current) {
@@ -92,7 +90,6 @@ export default function ScanView({
       }
 
       streamRef.current = stream;
-      setCameraPermission("granted");
       setCameraActive(true);
 
       if (videoRef.current) {
@@ -103,11 +100,10 @@ export default function ScanView({
       }
     } catch (err: any) {
       console.warn("Camera streaming failed:", err);
-      setCameraPermission("denied");
       setCameraActive(false);
       setError(
         isAr 
-          ? "لم نتمكن من تشغيل الكاميرا المباشرة. يرجى التحقق من صلاحيات التطبيق وإعادة المحاولة." 
+          ? "فشل تشغيل الكاميرا المباشرة. يرجى التحقق من صلاحيات المتصفح والاتصال." 
           : "Could not activate live camera feed. Please check app permissions and try again."
       );
     }
@@ -146,7 +142,7 @@ export default function ScanView({
       }
     } catch (err: any) {
       console.error("Error capturing canvas snapshot:", err);
-      setError(isAr ? "فشل التقاط لقطة الكاميرا المباشرة." : "Failed to capture live camera frame.");
+      setError(isAr ? "فشل التقاط الصورة من الكاميرا." : "Failed to capture live camera frame.");
     }
   };
 
@@ -157,9 +153,9 @@ export default function ScanView({
       setOcrResult(null);
       setTranslateResult(null);
 
-      setScanStep(isAr ? "🔍 جاري الاتصال بنظام المسح الضوئي..." : "🔍 Contacting smart scanning core...");
+      setScanStep(isAr ? "🔍 جاري الاتصال بنظام الفحص الضوئي..." : "🔍 Contacting smart scanning core...");
       await new Promise((r) => setTimeout(r, 400));
-      setScanStep(isAr ? "📡 جاري إرسال الصورة لـ Gemini..." : "📡 Sending frames to Gemini...");
+      setScanStep(isAr ? "📡 جاري إرسال البيانات إلى خادم الذكاء الاصطناعي..." : "📡 Sending frames to Gemini...");
 
       const targetLanguageName = isAr ? "Arabic" : "English";
 
@@ -189,13 +185,13 @@ export default function ScanView({
         const newProduct: Product = {
           id: "scanned-" + Date.now(),
           name: data.productName || (isAr ? "منتج محلي مكتشف" : "Decoded Local Item"),
-          brand: data.brand || (isAr ? "ماركة محلية" : "Local Brand"),
+          brand: data.brand || (isAr ? "علامة تجارية محلية" : "Local Brand"),
           barcode: data.barcode || "N/A",
           category: data.category || "Food",
           priceInLocal: data.estimatedLocalPrice || 150,
           countryCode: currentCountry.code,
-          storeName: isAr ? "متجر تجزئة معتمد" : "Verified Retailer",
-          description: data.description || (isAr ? "تم التحقق منه تلقائياً." : "Authentic local item."),
+          storeName: isAr ? "سوبرماركت معتمد" : "Verified Retailer",
+          description: data.description || (isAr ? "تم التحقق من تفاصيل المنتج وصلاحيته." : "Authentic local item."),
           contributedBy: "You",
           dateContributed: new Date().toLocaleDateString(),
         };
@@ -206,7 +202,7 @@ export default function ScanView({
       }
     } catch (err: any) {
       console.warn("Scan failed, executing safe local resolution...", err);
-      setScanStep(isAr ? "⚙️ جاري التوليف المحلي للمنتج..." : "⚙️ Performing offline resolution...");
+      setScanStep(isAr ? "⚙️ جاري معالجة المنتج محلياً..." : "⚙️ Performing offline resolution...");
       await new Promise((r) => setTimeout(r, 600));
 
       if (scanMode === "ocr") {
@@ -217,7 +213,7 @@ export default function ScanView({
             isAr ? "تحذير - الأمان أولاً" : "Warning - Safety First",
             isAr ? "مخرج الطوارئ من هنا. يرجى الانتباه لموضع قدمك." : "The emergency exit is here. Please watch your step."
           ],
-          summary: isAr ? "لوحة إرشادية للأمان ومخارج الطوارئ في المحطة." : "Emergency exit safety guide sign at the transit facility."
+          summary: isAr ? "لوحة إرشادية للأمان ومخارج الطوارئ." : "Emergency exit safety guide sign at the transit facility."
         });
       } else if (scanMode === "translate") {
         setTranslateResult({
@@ -227,7 +223,7 @@ export default function ScanView({
             : "Closed Today - We look forward to your next visit",
           detectedLanguage: isAr ? "اليابانية" : "Japanese",
           contextNotes: isAr
-            ? "لوحة إخطار شائعة في المتاجر والمطاعم اليابانية الصغيرة خارج المناطق السياحية خلال أيام العطل الأسبوعية."
+            ? "لوحة إخطار شائعة في المتاجر والمطاعم اليابانية الصغيرة خلال أيام العطل الأسبوعية."
             : "Common notice board on Japanese boutique shops and dining spots outside tourist zones during mid-week rest days."
         });
       } else {
@@ -240,11 +236,11 @@ export default function ScanView({
           category: "Food",
           priceInLocal: randomCost,
           countryCode: currentCountry.code,
-          storeName: isAr ? "سوبرماركت معتمد محلي" : "Local Certified Market",
+          storeName: isAr ? "متجر محلي معتمد" : "Local Certified Market",
           description: isAr
-            ? `منتج سفر أصلي ومحبوب للغاية تم مسحه ضوئيًا في ${currentCountry.nameAr || currentCountry.name}. يباع في المتاجر المجاورة بسعر حقيقي غير مبالغ فيه.`
-            : `Highly popular authentic travel staple scanned in ${currentCountry.name}. Available at standard local grocery rates with no tourist markup.`,
-          contributedBy: isAr ? "أنت (بيئة عدم الاتصال)" : "You (Offline Sandbox)",
+            ? `منتج سفر أصلي ومحبوب للغاية تم مسحه ضوئيًا في ${currentCountry.nameAr || currentCountry.name}.`
+            : `Highly popular authentic travel staple scanned in ${currentCountry.name}.`,
+          contributedBy: isAr ? "أنت (وضع عدم الاتصال)" : "You (Offline Sandbox)",
           dateContributed: new Date().toLocaleDateString()
         };
 
@@ -266,7 +262,7 @@ export default function ScanView({
     const matchedSample = SAMPLE_PRODUCTS_TO_SCAN.find(s => s.value === sampleVal);
     if (matchedSample) {
       try {
-        setScanStep(isAr ? "📸 جاري محاكاة اللقطة..." : "📸 Simulating camera snapshot...");
+        setScanStep(isAr ? "📸 جاري محاكاة الالتقاط الفوري..." : "📸 Simulating camera snapshot...");
         await new Promise((r) => setTimeout(r, 400));
 
         const response = await fetch("/api/scan-product", {
@@ -327,7 +323,7 @@ export default function ScanView({
               isAr ? "مخرج" : "Exit",
               isAr ? "مخرج طوارئ" : "Emergency Exit"
             ],
-            summary: isAr ? "مؤشرات وتوجيهات الخروج بمحطة المترو." : "Subway Exit directions layout."
+            summary: isAr ? "مؤشرات وتوجيهات الخروج." : "Subway Exit directions layout."
           });
         } else if (scanMode === "translate") {
           setTranslateResult({
@@ -336,7 +332,7 @@ export default function ScanView({
             detectedLanguage: "Japanese",
             contextNotes: isAr
               ? "علامة مخارج مترو الأنفاق في طوكيو. اتبع مؤشرات الأرقام المؤدية للشارع مباشرة."
-              : "Subway exit indicators in Tokyo. Follow these numbers to find the correct street level staircases."
+              : "Subway exit indicators in Tokyo. Follow these numbers to find the correct street level staircase."
           });
         } else {
           let localMock: Product;
@@ -417,76 +413,82 @@ export default function ScanView({
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-slate-950 text-slate-100 select-none pb-24" id="m3-scan-container">
+    <div className="flex flex-col h-full w-full max-w-lg mx-auto bg-slate-950 text-slate-100 select-none pb-24 rounded-3xl overflow-hidden shadow-2xl" id="m3-scan-container">
       
-      {/* 1. Material 3 Top App Bar: Back Button, Title, facing mode toggle */}
-      <div className="flex justify-between items-center px-4 py-3 bg-slate-900/90 border-b border-slate-800/60 sticky top-0 z-50">
+      {/* 1. Top App Bar - STRICTLY Safe Area with left/right buttons */}
+      <div className="flex justify-between items-center px-4 py-3 bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
+        {/* Back Button (Left) */}
         <button
-          onClick={() => onNavigate("home")}
-          className="p-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 hover:text-white rounded-full transition-all flex items-center justify-center border border-slate-700/40"
+          onClick={() => {
+            stopCamera();
+            onNavigate("home");
+          }}
+          className="p-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 hover:text-white rounded-full transition-all flex items-center justify-center border border-slate-700/50"
           title={isAr ? "رجوع" : "Back"}
         >
           <ArrowLeft className={`w-5 h-5 ${isAr ? "rotate-180" : ""}`} />
         </button>
 
+        {/* Title Center */}
         <div className="text-center">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200">
-            {isAr ? "قارئ عدسة المسح الضوئي" : "Lens Scanner"}
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+            {isAr ? "ماسح الكاميرا الذكي" : "Lens Scanner"}
           </h2>
-          <p className="text-[10px] text-slate-400">
+          <p className="text-[10px] text-slate-400 font-bold">
             {currentCountry.flag} {isAr ? currentCountry.nameAr || currentCountry.name : currentCountry.name}
           </p>
         </div>
 
+        {/* Camera Facing Toggle (Right) */}
         <button
           onClick={toggleFacingMode}
-          className="p-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 hover:text-white rounded-full transition-all flex items-center justify-center border border-slate-700/40"
+          className="p-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 hover:text-white rounded-full transition-all flex items-center justify-center border border-slate-700/50"
           title={isAr ? "تبديل الكاميرا" : "Switch Camera"}
         >
           <ArrowRightLeft className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Error alerts rendering strictly inside safe boundaries */}
+      {/* Error alert Banner */}
       {error && (
-        <div className="mx-4 mt-3 p-3 bg-red-950/40 border border-red-800/50 rounded-2xl flex flex-col items-center gap-2 text-center">
-          <p className="text-xs text-red-300 font-bold leading-normal">
+        <div className="mx-4 mt-3 p-3 bg-red-950/50 border border-red-900/30 rounded-2xl flex flex-col items-center gap-2 text-center">
+          <p className="text-xs text-red-300 font-medium leading-relaxed">
             {error}
           </p>
           <button
             onClick={() => startCamera(facingMode)}
-            className="px-4 py-1.5 bg-red-600 hover:bg-red-700 active:scale-95 text-white text-[11px] font-bold rounded-xl transition-all"
+            className="px-4 py-1.5 bg-red-600 hover:bg-red-700 active:scale-95 text-white text-[10px] font-black rounded-lg transition-all"
           >
             {isAr ? "إعادة المحاولة" : "Retry Camera"}
           </button>
         </div>
       )}
 
-      {/* 2. Panoramic Camera Viewfinder: fills the space cleanly using correct aspect ratios with Flexbox, NO floating overlaps */}
-      <div className="flex-1 flex items-center justify-center bg-black overflow-hidden relative w-full aspect-[4/3] p-1">
+      {/* 2. Panoramic Camera Viewfinder - STRICT ASPECT-RATIO & FULL COVERAGE, NO FLOATING LAYOUTS ON TOP */}
+      <div className="w-full aspect-[4/3] bg-black overflow-hidden relative flex items-center justify-center">
         {cameraActive ? (
           <video
             ref={videoRef}
             playsInline
             muted
-            className="w-full h-full object-cover rounded-2xl"
+            className="w-full h-full object-cover"
           />
         ) : (
           <div className="flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500">
-              <Camera className="w-8 h-8 animate-pulse" />
+            <div className="w-14 h-14 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500">
+              <Camera className="w-7 h-7 animate-pulse text-blue-500" />
             </div>
             <div className="space-y-1">
               <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">
-                {isAr ? "عدسة الكاميرا جاهزة" : "CAMERA READY"}
+                {isAr ? "عدسة الكاميرا جاهزة" : "CAMERA STANDBY"}
               </p>
               <p className="text-[10px] text-slate-500 max-w-xs leading-normal">
-                {isAr ? "يرجى تشغيل الكاميرا المباشرة أو محاكاة الكاميرا باستخدام النماذج السريعة بالأسفل" : "Activate live camera or trigger instant scans using the simulation presets below"}
+                {isAr ? "يرجى تفعيل الكاميرا المباشرة للبدء أو اختيار نماذج مسح سريعة أدناه" : "Activate live feed or select simulation preset below to start"}
               </p>
             </div>
             <button
               onClick={() => startCamera(facingMode)}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-[11px] font-black uppercase tracking-wider rounded-2xl shadow-md transition-all flex items-center gap-2"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-[10px] font-bold rounded-xl shadow-md transition-all flex items-center gap-1.5"
             >
               <Camera className="w-4 h-4" />
               <span>{isAr ? "تشغيل الكاميرا" : "Activate Live Camera"}</span>
@@ -494,43 +496,32 @@ export default function ScanView({
           </div>
         )}
 
-        {/* Real-time processing progress card inside viewfinder boundaries */}
+        {/* Scanning Overlay State */}
         {scanning && (
           <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 z-20">
-            <div className="w-12 h-12 rounded-full border-2 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent animate-spin mb-4"></div>
-            <p className="text-xs font-bold text-blue-400 tracking-wider animate-pulse">
+            <div className="w-10 h-10 rounded-full border-2 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent animate-spin mb-3"></div>
+            <p className="text-xs font-semibold text-blue-400 tracking-wider animate-pulse">
               {scanStep}
             </p>
           </div>
         )}
       </div>
 
-      {/* 3. Bottom Controls section: Outside the camera frame to avoid covering the stream */}
-      <div className="bg-slate-900 border-t border-slate-800/80 p-5 flex flex-col items-center space-y-5 w-full">
+      {/* 3. Controls Layout - PLACED STRICTLY BELOW CAMERA TO ENSURE NO COVERS OVER STREAM */}
+      <div className="bg-slate-900 border-t border-slate-800 p-4 flex flex-col items-center space-y-4">
         
-        {/* Compact Mode Selector Bar: Pills style */}
-        <div className="bg-slate-950 p-1 rounded-2xl flex border border-slate-800/50 w-full justify-around shadow-inner">
+        {/* Mode Selectors */}
+        <div className="bg-slate-950 p-1 rounded-2xl flex border border-slate-850 w-full justify-around shadow-inner">
           <button 
             onClick={() => {
               setScanMode("product");
               setOcrResult(null);
               setTranslateResult(null);
             }}
-            className={`py-2 px-3.5 rounded-xl text-[10px] font-black tracking-wider transition-all flex items-center gap-1.5 ${scanMode === "product" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
+            className={`py-2 px-4 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1.5 ${scanMode === "product" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
           >
             <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
             <span>{isAr ? "المنتج" : "PRODUCT"}</span>
-          </button>
-          <button 
-            onClick={() => {
-              setScanMode("barcode");
-              setOcrResult(null);
-              setTranslateResult(null);
-            }}
-            className={`py-2 px-3.5 rounded-xl text-[10px] font-black tracking-wider transition-all flex items-center gap-1.5 ${scanMode === "barcode" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
-          >
-            <RefreshCw className="w-3.5 h-3.5 shrink-0" />
-            <span>{isAr ? "بار كود" : "BARCODE"}</span>
           </button>
           <button 
             onClick={() => {
@@ -538,7 +529,7 @@ export default function ScanView({
               setOcrResult(null);
               setTranslateResult(null);
             }}
-            className={`py-2 px-3.5 rounded-xl text-[10px] font-black tracking-wider transition-all flex items-center gap-1.5 ${scanMode === "ocr" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
+            className={`py-2 px-4 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1.5 ${scanMode === "ocr" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
           >
             <FileText className="w-3.5 h-3.5 shrink-0" />
             <span>{isAr ? "نصوص" : "OCR TEXT"}</span>
@@ -549,32 +540,32 @@ export default function ScanView({
               setOcrResult(null);
               setTranslateResult(null);
             }}
-            className={`py-2 px-3.5 rounded-xl text-[10px] font-black tracking-wider transition-all flex items-center gap-1.5 ${scanMode === "translate" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
+            className={`py-2 px-4 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1.5 ${scanMode === "translate" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
           >
-            <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin-slow" />
+            <RefreshCw className="w-3.5 h-3.5 shrink-0" />
             <span>{isAr ? "ترجمة" : "TRANSLATE"}</span>
           </button>
         </div>
 
         {/* Shutter capture & Gallery controls button bar */}
-        <div className="flex justify-between items-center w-full max-w-sm px-6">
+        <div className="flex justify-between items-center w-full max-w-sm px-6 py-1">
           
-          {/* Gallery selector */}
+          {/* Gallery Picker (Left) */}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="flex flex-col items-center justify-center text-slate-400 hover:text-slate-200 transition-all active:scale-90"
             title={isAr ? "معرض الصور" : "Pick from Gallery"}
           >
-            <div className="w-12 h-12 bg-slate-800 hover:bg-slate-750 text-blue-400 rounded-full flex items-center justify-center shadow-md border border-slate-700/50">
-              <ShoppingBag className="w-5 h-5 text-blue-400" />
+            <div className="w-11 h-11 bg-slate-800 hover:bg-slate-750 text-blue-400 rounded-full flex items-center justify-center shadow-md border border-slate-700/50">
+              <ShoppingBag className="w-4.5 h-4.5 text-blue-400" />
             </div>
             <span className="text-[9px] font-bold mt-1 text-slate-400 uppercase tracking-wider">
               {isAr ? "المعرض" : "Gallery"}
             </span>
           </button>
 
-          {/* Centered Large Circular Shutter button placed strictly outside camera element */}
+          {/* Large Circular Shutter button placed strictly outside camera element (Center) */}
           <button
             type="button"
             onClick={() => {
@@ -587,10 +578,10 @@ export default function ScanView({
             className="w-16 h-16 bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all rounded-full flex items-center justify-center shadow-xl border-4 border-slate-900 group cursor-pointer"
             title={isAr ? "التقاط الصورة" : "Capture Photo"}
           >
-            <Camera className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
+            <Camera className="w-6 h-6 text-white group-hover:scale-105 transition-transform" />
           </button>
 
-          {/* Camera Close button */}
+          {/* Camera On/Off Toggle (Right) */}
           {cameraActive ? (
             <button
               type="button"
@@ -598,8 +589,8 @@ export default function ScanView({
               className="flex flex-col items-center justify-center text-slate-400 hover:text-red-400 transition-all active:scale-90"
               title={isAr ? "إيقاف الكاميرا" : "Turn Off Camera"}
             >
-              <div className="w-12 h-12 bg-red-950/30 hover:bg-red-900/30 text-red-400 rounded-full flex items-center justify-center shadow-md border border-red-900/30">
-                <X className="w-5 h-5" />
+              <div className="w-11 h-11 bg-red-950/20 hover:bg-red-900/20 text-red-400 rounded-full flex items-center justify-center shadow-md border border-red-900/20">
+                <X className="w-4.5 h-4.5" />
               </div>
               <span className="text-[9px] font-bold mt-1 text-slate-400 uppercase tracking-wider">
                 {isAr ? "إيقاف" : "Stop"}
@@ -612,8 +603,8 @@ export default function ScanView({
               className="flex flex-col items-center justify-center text-slate-400 hover:text-emerald-400 transition-all active:scale-90"
               title={isAr ? "تشغيل الكاميرا" : "Turn On Camera"}
             >
-              <div className="w-12 h-12 bg-emerald-950/20 hover:bg-emerald-900/20 text-emerald-400 rounded-full flex items-center justify-center shadow-md border border-emerald-900/30">
-                <Camera className="w-5 h-5" />
+              <div className="w-11 h-11 bg-emerald-950/10 hover:bg-emerald-900/10 text-emerald-400 rounded-full flex items-center justify-center shadow-md border border-emerald-900/20">
+                <Camera className="w-4.5 h-4.5" />
               </div>
               <span className="text-[9px] font-bold mt-1 text-slate-400 uppercase tracking-wider">
                 {isAr ? "تشغيل" : "Start"}
@@ -625,7 +616,6 @@ export default function ScanView({
 
       </div>
 
-      {/* Invisible HTML File input element for capturing or choosing images */}
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -634,24 +624,24 @@ export default function ScanView({
         className="hidden" 
       />
 
-      {/* 4. Scrollable Content Block: Results & presets in Material 3 cards */}
-      <div className="px-4 mt-4 space-y-4 max-w-md mx-auto w-full">
+      {/* 4. Results cards & simulation presets section */}
+      <div className="px-4 mt-4 space-y-4 max-w-md mx-auto w-full overflow-y-auto no-scrollbar max-h-80">
         
-        {/* OCR Result bottom sheet container */}
+        {/* OCR Result Details */}
         {ocrResult && (
-          <div className="bg-slate-900 border border-slate-850 rounded-3xl p-5 shadow-lg space-y-4 text-left relative">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-lg space-y-3 text-left relative">
             <button 
               onClick={() => setOcrResult(null)} 
-              className="absolute top-4 right-4 p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-full transition-all"
+              className="absolute top-3 right-3 p-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-full transition-all"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
             <span className="text-[9px] bg-blue-950 text-blue-400 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1 border border-blue-900/30">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              {isAr ? "نتائج استخراج النصوص الفورية" : "Instant OCR Result"}
+              {isAr ? "نتائج قراءة النصوص" : "OCR Decoded Result"}
             </span>
             <div className="space-y-3 pt-1">
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap text-left">
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed max-h-36 overflow-y-auto whitespace-pre-wrap text-left">
                 {ocrResult.detectedText}
               </div>
               <div className="text-xs space-y-1">
@@ -661,16 +651,16 @@ export default function ScanView({
               <div className="flex gap-2">
                 <button 
                   onClick={() => copyToClipboard(ocrResult.detectedText)}
-                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1 border border-slate-700/50"
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1 border border-slate-700/50"
                 >
-                  <CheckCircle2 className={`w-4 h-4 ${copied ? "text-emerald-400" : "text-blue-400"}`} />
+                  <CheckCircle2 className={`w-3.5 h-3.5 ${copied ? "text-emerald-400" : "text-blue-400"}`} />
                   <span>{copied ? (isAr ? "تم نسخ النص!" : "Copied!") : (isAr ? "نسخ النص" : "Copy Text")}</span>
                 </button>
                 <button 
                   onClick={() => speakText(ocrResult.detectedText)}
-                  className="px-4 py-2.5 bg-blue-950 hover:bg-blue-900 text-blue-300 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1 border border-blue-900/30"
+                  className="px-3 py-2 bg-blue-950 hover:bg-blue-900 text-blue-300 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1 border border-blue-900/30"
                 >
-                  <Volume2 className="w-4 h-4" />
+                  <Volume2 className="w-3.5 h-3.5" />
                   <span>{isSpeaking ? (isAr ? "إيقاف" : "Stop") : (isAr ? "نطق" : "Speak")}</span>
                 </button>
               </div>
@@ -678,37 +668,37 @@ export default function ScanView({
           </div>
         )}
 
-        {/* Sign Translation Result card container */}
+        {/* Translation Details */}
         {translateResult && (
-          <div className="bg-slate-900 border border-slate-850 rounded-3xl p-5 shadow-lg space-y-4 text-left relative">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-lg space-y-3 text-left relative">
             <button 
               onClick={() => setTranslateResult(null)} 
-              className="absolute top-4 right-4 p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-full transition-all"
+              className="absolute top-3 right-3 p-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-full transition-all"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
             <span className="text-[9px] bg-emerald-950 text-emerald-400 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1 border border-emerald-900/30">
               <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-              {isAr ? "مترجم اللافتات الذكي" : "Intelligent Sign Translator"}
+              {isAr ? "مترجم اللافتات المباشر" : "Intelligent Sign Translator"}
             </span>
             <div className="space-y-3 pt-1">
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800">
-                  <span className="text-[8px] text-slate-400 font-bold block mb-1 uppercase tracking-wider">{isAr ? "النص المرصود:" : "Spotted Text:"}</span>
-                  <p className="font-bold text-slate-200 italic">“{translateResult.originalText}”</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <span className="text-[8px] text-slate-400 block mb-1 uppercase tracking-wider">{isAr ? "النص الأصلي:" : "Spotted Text:"}</span>
+                  <p className="font-bold text-slate-200">“{translateResult.originalText}”</p>
                 </div>
-                <div className="p-3 bg-emerald-950/20 rounded-2xl border border-emerald-900/20">
-                  <span className="text-[8px] text-emerald-400 font-bold block mb-1 uppercase tracking-wider">{isAr ? "الترجمة المعتمدة:" : "Certified Translation:"}</span>
-                  <p className="font-extrabold text-emerald-300">“{translateResult.translatedText}”</p>
+                <div className="p-3 bg-emerald-950/20 rounded-xl border border-emerald-900/20">
+                  <span className="text-[8px] text-emerald-400 block mb-1 uppercase tracking-wider">{isAr ? "الترجمة المعتمدة:" : "Certified Translation:"}</span>
+                  <p className="font-bold text-emerald-300">“{translateResult.translatedText}”</p>
                 </div>
               </div>
               
               {translateResult.contextNotes && (
-                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 flex gap-2 text-xs">
-                  <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex gap-2 text-xs">
+                  <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                   <div className="space-y-0.5">
-                    <span className="font-bold text-slate-300">{isAr ? "إرشاد أمني للمسافر:" : "Traveler Security Guide:"}</span>
-                    <p className="text-slate-400 leading-relaxed text-[11px]">{translateResult.contextNotes}</p>
+                    <span className="font-bold text-slate-300">{isAr ? "إرشادات هامة للمسافر:" : "Traveler Security Guide:"}</span>
+                    <p className="text-slate-400 leading-normal text-[11px]">{translateResult.contextNotes}</p>
                   </div>
                 </div>
               )}
@@ -716,16 +706,16 @@ export default function ScanView({
               <div className="flex gap-2">
                 <button 
                   onClick={() => copyToClipboard(translateResult.translatedText)}
-                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1 border border-slate-700/50"
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1 border border-slate-700/50"
                 >
-                  <CheckCircle2 className={`w-4 h-4 ${copied ? "text-emerald-400" : "text-blue-400"}`} />
+                  <CheckCircle2 className={`w-3.5 h-3.5 ${copied ? "text-emerald-400" : "text-blue-400"}`} />
                   <span>{copied ? (isAr ? "تم نسخ الترجمة!" : "Copied!") : (isAr ? "نسخ الترجمة" : "Copy Translation")}</span>
                 </button>
                 <button 
                   onClick={() => speakText(translateResult.translatedText)}
-                  className="px-4 py-2.5 bg-blue-950 hover:bg-blue-900 text-blue-300 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1 border border-blue-900/30"
+                  className="px-3 py-2 bg-blue-950 hover:bg-blue-900 text-blue-300 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1 border border-blue-900/30"
                 >
-                  <Volume2 className="w-4 h-4" />
+                  <Volume2 className="w-3.5 h-3.5" />
                   <span>{isSpeaking ? (isAr ? "إيقاف" : "Stop") : (isAr ? "نطق" : "Speak")}</span>
                 </button>
               </div>
@@ -733,14 +723,14 @@ export default function ScanView({
           </div>
         )}
 
-        {/* 5. Preset Simulation Snaps */}
-        <div className="bg-slate-900 border border-slate-850 rounded-3xl p-4 shadow-md space-y-3">
+        {/* 5. Quick Simulation Presets */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-md space-y-3 text-left">
           <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-blue-400" />
-            {isAr ? "نماذج مسح سريعة" : "Quick Scan Presets"}
+            {isAr ? "نماذج المحاكاة الفورية" : "Quick Scan Presets"}
           </h3>
-          <p className="text-[10px] text-slate-400 leading-normal font-medium">
-            {isAr ? "اختر أحد العناصر الجاهزة أدناه لمحاكاة التقاطها وفحصها مباشرة:" : "Select one of the presets below to simulate capturing and inspecting it directly:"}
+          <p className="text-[10px] text-slate-400 leading-normal">
+            {isAr ? "اختر أحد النماذج المتاحة لوجهتك الحالية لمحاكاة مسحها وفحصها مباشرة:" : "Select one of the presets below to simulate capturing and inspecting it directly:"}
           </p>
           
           <div className="grid grid-cols-2 gap-2">
@@ -754,14 +744,14 @@ export default function ScanView({
                   className={`p-3 rounded-2xl border transition-all text-left ${
                     isCountryMatch 
                       ? "bg-blue-950/30 border-blue-900/40 hover:bg-blue-900/30 text-blue-200" 
-                      : "bg-slate-950/40 border-slate-850 hover:bg-slate-950 text-slate-400 opacity-60"
+                      : "bg-slate-950 border-slate-850 text-slate-500 opacity-50"
                   } text-[11px] font-bold flex flex-col justify-between`}
                 >
                   <span className="line-clamp-1">
                     {isAr && preset.value === "oi_ocha" ? "شاي أخضر أوي أوشا" : isAr && preset.value === "espresso" ? "قهوة لافاتزا إكسبريسو" : isAr && preset.value === "baguette" ? "خبز باجيت فرنسي" : isAr && preset.value === "toastie" ? "توست هام وجبن مشوي" : preset.label}
                   </span>
-                  <span className="text-[9px] text-slate-500 mt-1.5 font-normal">
-                    {isAr ? `بلد المنشأ: ${preset.countryCode}` : `Origin: ${preset.countryCode}`} {isCountryMatch && "⭐"}
+                  <span className="text-[9px] text-slate-500 mt-1.5 font-semibold">
+                    {isAr ? `المنشأ: ${preset.countryCode}` : `Origin: ${preset.countryCode}`} {isCountryMatch && "⭐"}
                   </span>
                 </button>
               );
@@ -769,8 +759,8 @@ export default function ScanView({
           </div>
         </div>
 
-        {/* 6. Travel Advisory Info Card */}
-        <div className="bg-slate-900/60 border border-slate-800/40 p-4 rounded-3xl flex gap-3 text-xs text-slate-300">
+        {/* Advisory Info card */}
+        <div className="bg-slate-900/50 border border-slate-800/60 p-4 rounded-3xl flex gap-3 text-xs text-slate-300 text-left">
           <Info className="w-5 h-5 text-blue-400 shrink-0" />
           <div className="space-y-1">
             <p className="font-bold text-slate-200">
@@ -778,7 +768,7 @@ export default function ScanView({
             </p>
             <p className="text-[10px] text-slate-400 leading-normal">
               {isAr 
-                ? "تقوم المتاجر الواقعة في المناطق السياحية المزدحمة مثل محطات القطار ومداخل المعابد بزيادة الأسعار بنسبة تصل إلى 150%. احرص دائماً على الفحص والتحقق للتعرف على الأسعار العادلة."
+                ? "المحلات التجارية السياحية القريبة من المعابد ومخارج محطات المترو ترفع أسعار السلع بنسب كبيرة. احرص دائماً على فحص السعر الأصلي لضمان العدالة."
                 : "Tourist hotspot shops mark up products significantly. Always check local equivalents to ensure fair spending."}
             </p>
           </div>

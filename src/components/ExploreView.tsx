@@ -3,10 +3,9 @@ import {
   Compass, Store, Landmark, Map, MapPin, ShieldAlert, Star, Clock, 
   Sparkles, CheckCircle2, Ticket, ChevronRight, Navigation, Info,
   Globe, Search, Plane, Hotel, Utensils, CloudSun, Languages, 
-  PhoneCall, ShieldCheck, RefreshCw, CreditCard, Droplet, Smile, HeartHandshake
+  PhoneCall, ShieldCheck, RefreshCw, Smile
 } from "lucide-react";
-import { Country, Supermarket, Attraction, CountryGuide } from "../types";
-// Verified responsive flex explore view and GPS fallback tracking system
+import { Country, CountryGuide } from "../types";
 import { SUPERMARKETS, ATTRACTIONS } from "../data";
 import { useLanguage } from "../lib/i18n";
 
@@ -89,11 +88,11 @@ export default function ExploreView({
     navigator.geolocation.getCurrentPosition(
       successCallback,
       (error) => {
-        console.warn("GPS High Accuracy failed, retrying with cellular/wifi standard accuracy...", error);
+        console.warn("GPS High Accuracy failed, trying standard cellular/wifi accuracy...", error);
         navigator.geolocation.getCurrentPosition(
           successCallback,
           (secondError) => {
-            console.error("All GPS attempts failed:", secondError);
+            console.error("GPS detection failed:", secondError);
             setGpsStatus("failed");
             setGpsError(
               isAr 
@@ -110,7 +109,7 @@ export default function ExploreView({
 
   const activeGuide: CountryGuide | undefined = countryGuides[currentCountry.code];
 
-  // If a guide is loaded, use its landmarks/stores. Otherwise fall back to static data.
+  // Load appropriate lists
   const countrySupermarkets = activeGuide?.supermarkets 
     ? activeGuide.supermarkets 
     : SUPERMARKETS.filter(s => s.countryCode === currentCountry.code);
@@ -129,19 +128,20 @@ export default function ExploreView({
       }))
     : ATTRACTIONS.filter(a => a.countryCode === currentCountry.code);
 
-  // Auto-fetch guide for current country if not loaded
+  // Load guide if missing
   useEffect(() => {
     if (currentCountry && !countryGuides[currentCountry.code]) {
       fetchCountryGuide(currentCountry.name);
     }
   }, [currentCountry]);
 
-  // Auto-detect location on first screen mount
+  // Request GPS automatically once per session
   useEffect(() => {
-    const alreadyDetected = sessionStorage.getItem("nomi_gps_auto_detected") === "true";
+    const detectedKey = "nomi_gps_auto_detected";
+    const alreadyDetected = sessionStorage.getItem(detectedKey) === "true";
     if (!alreadyDetected) {
       handleDetectLocation();
-      sessionStorage.setItem("nomi_gps_auto_detected", "true");
+      sessionStorage.setItem(detectedKey, "true");
     }
   }, []);
 
@@ -174,7 +174,6 @@ export default function ExploreView({
     setIsSearching(true);
     setSearchError("");
 
-    // Check if country exists in existing countriesList
     const queryLower = searchQuery.toLowerCase().trim();
     const existing = countriesList.find(
       c => c.name.toLowerCase() === queryLower || 
@@ -189,7 +188,6 @@ export default function ExploreView({
       return;
     }
 
-    // Otherwise, generate a guide for the new country
     try {
       const response = await fetch("/api/country-guide", {
         method: "POST",
@@ -200,13 +198,8 @@ export default function ExploreView({
         throw new Error("Failed to search country");
       }
       const guideData: CountryGuide = await response.json();
-      
-      // Add dynamic country
       onAddDynamicCountry(guideData);
-      
-      // Update destination selection
       onChangeDestination(guideData.code);
-      
       setSearchQuery("");
     } catch (err: any) {
       console.error(err);
@@ -229,12 +222,12 @@ export default function ExploreView({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar p-4 flex flex-col space-y-4 h-full pb-28 bg-slate-50 animate-fade-in" id="explore-view-container">
+    <div className="flex-1 w-full max-w-lg mx-auto flex flex-col space-y-4 bg-slate-50 text-slate-900 pb-20 px-1" id="explore-view-container">
       
-      {/* Dynamic Global Country Search */}
-      <form onSubmit={handleSearchCountry} className="bg-white p-3 rounded-3xl border border-slate-100 shadow-sm space-y-2">
+      {/* 1. Global AI Country Search */}
+      <form onSubmit={handleSearchCountry} className="bg-white p-3.5 rounded-3xl border border-slate-200/85 shadow-sm space-y-2 shrink-0">
         <div className="text-left">
-          <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
+          <label className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block mb-1">
             {isAr ? "استكشف أي بلد في العالم" : "Explore Any Country in the World"}
           </label>
           <div className="flex gap-2">
@@ -244,7 +237,7 @@ export default function ExploreView({
                 type="text" 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={isAr ? "ابحث باللغة العربية أو الإنجليزية (مثال: البرازيل، مصر)..." : "Search in English or Arabic (e.g., Brazil, Egypt)..."}
+                placeholder={isAr ? "ابحث باللغة العربية أو الإنجليزية..." : "Search in English or Arabic (e.g., Brazil, Egypt)..."}
                 className={`w-full bg-slate-50 border border-slate-200 rounded-2xl py-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-inner ${isAr ? "pr-3 pl-10 text-right" : "pl-10 pr-4 text-left"}`}
               />
             </div>
@@ -258,7 +251,7 @@ export default function ExploreView({
               ) : (
                 <Globe className="w-4 h-4" />
               )}
-              <span>{isAr ? "بحث ذكي" : "AI Search"}</span>
+              <span>{isAr ? "بحث" : "Search"}</span>
             </button>
           </div>
         </div>
@@ -268,31 +261,31 @@ export default function ExploreView({
             <RefreshCw className="w-5 h-5 text-blue-600 animate-spin shrink-0" />
             <div className="text-xs">
               <p className="font-bold text-blue-900">{isAr ? "جارٍ توليد الدليل الذكي وتحديث الأسعار..." : "Generating AI guide & calibrating local prices..."}</p>
-              <p className="text-slate-500 text-[10px]">{isAr ? "يستغرق هذا ثوانٍ معدودة عبر Gemini 3.5..." : "This takes a few seconds via Gemini 3.5..."}</p>
+              <p className="text-slate-500 text-[10px]">{isAr ? "يستغرق هذا ثوانٍ معدودة عبر Gemini..." : "This takes a few seconds via Gemini..."}</p>
             </div>
           </div>
         )}
 
         {searchError && (
-          <p className="text-[11px] text-red-600 font-medium px-1 text-left">{searchError}</p>
+          <p className="text-[11px] text-red-600 font-bold px-1 text-left">{searchError}</p>
         )}
       </form>
 
-      {/* Segmented Controller Tab Selector */}
-      <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-3">
+      {/* 2. Segmented Controller Tab Selector (Material 3 style) */}
+      <div className="bg-white p-1 rounded-2xl border border-slate-200/85 shadow-sm grid grid-cols-3 shrink-0">
         <button
           onClick={() => {
             setExploreTab("stores");
             setActiveAttraction(null);
           }}
-          className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
             exploreTab === "stores" 
               ? "bg-blue-600 text-white shadow-sm" 
               : "text-slate-500 hover:text-slate-800"
           }`}
         >
           <Store className="w-4 h-4" />
-          {t("explore.tab_stores")}
+          <span>{t("explore.tab_stores")}</span>
         </button>
 
         <button
@@ -300,14 +293,14 @@ export default function ExploreView({
             setExploreTab("landmarks");
             setActiveSupermarket(null);
           }}
-          className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
             exploreTab === "landmarks" 
               ? "bg-blue-600 text-white shadow-sm" 
               : "text-slate-500 hover:text-slate-800"
           }`}
         >
           <Landmark className="w-4 h-4" />
-          {t("explore.tab_landmarks")}
+          <span>{t("explore.tab_landmarks")}</span>
         </button>
 
         <button
@@ -316,24 +309,24 @@ export default function ExploreView({
             setActiveSupermarket(null);
             setActiveAttraction(null);
           }}
-          className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
             exploreTab === "guide" 
               ? "bg-blue-600 text-white shadow-sm" 
               : "text-slate-500 hover:text-slate-800"
           }`}
         >
           <Globe className="w-4 h-4" />
-          {isAr ? "دليل البلد" : "Country Guide"}
+          <span>{isAr ? "دليل البلد" : "Country Guide"}</span>
         </button>
       </div>
 
-      {/* Interactive Map View Card */}
+      {/* 3. Interactive Radar Locator Card */}
       {exploreTab !== "guide" && (
-        <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3" id="interactive-map-card">
+        <div className="bg-white border border-slate-200/85 rounded-3xl p-4 shadow-sm space-y-3 shrink-0" id="interactive-map-card">
           <div className={`flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 ${isAr ? "text-right" : "text-left"}`}>
             <div className="space-y-1">
               <div className={`flex items-center gap-2 ${isAr ? "flex-row-reverse" : "flex-row"}`}>
-                <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${
                   gpsStatus === "searching" 
                     ? "bg-amber-100 text-amber-700 animate-pulse" 
                     : gpsStatus === "success" 
@@ -350,7 +343,7 @@ export default function ExploreView({
                         ? (isAr ? "فشل الاتصال" : "GPS OFFLINE") 
                         : (isAr ? "نشط" : "GPS READY")}
                 </span>
-                <span className="text-[10px] text-slate-400 font-mono">
+                <span className="text-[10px] text-slate-400 font-mono font-bold">
                   {currentCountry.flag} {language === "ar" ? (currentCountry.nameAr || currentCountry.name) : currentCountry.name}
                 </span>
               </div>
@@ -361,10 +354,10 @@ export default function ExploreView({
               <button
                 onClick={handleDetectLocation}
                 disabled={gpsStatus === "searching"}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-[10px] font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-450 text-white rounded-xl text-[10px] font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
               >
                 <Navigation className={`w-3.5 h-3.5 ${gpsStatus === "searching" ? "animate-spin" : "transform rotate-45"}`} />
-                <span>{isAr ? "تحديد موقعي التلقائي" : "Auto Detect Location"}</span>
+                <span>{isAr ? "تحديث الموقع" : "Auto Detect Location"}</span>
               </button>
 
               <button
@@ -372,12 +365,12 @@ export default function ExploreView({
                 className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1 border border-slate-200"
               >
                 <Map className="w-3.5 h-3.5" />
-                {showMap ? t("explore.hide_map") : t("explore.show_map")}
+                <span>{showMap ? t("explore.hide_map") : t("explore.show_map")}</span>
               </button>
             </div>
           </div>
 
-          {/* GPS Progress / Status Feedback */}
+          {/* GPS Feedback Messages */}
           {gpsStatus === "searching" && (
             <div className="p-3 bg-amber-50/50 border border-amber-100/30 rounded-2xl flex items-center gap-3 animate-pulse">
               <RefreshCw className="w-4 h-4 text-amber-600 animate-spin shrink-0" />
@@ -418,7 +411,7 @@ export default function ExploreView({
                   className="w-full py-2 bg-white hover:bg-slate-50 border border-red-200 hover:border-red-300 text-red-700 font-extrabold text-[10px] rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
                 >
                   <Globe className="w-3.5 h-3.5 text-red-500" />
-                  <span>{isAr ? "استعن بالاختيار اليدوي للبلد" : "Pick Destination Country Manually"}</span>
+                  <span>{isAr ? "اختر البلد يدويًا" : "Pick Destination Country Manually"}</span>
                 </button>
               )}
             </div>
@@ -426,7 +419,6 @@ export default function ExploreView({
 
           {showMap && (
             <div className="aspect-video bg-slate-950 rounded-2xl relative flex items-center justify-center overflow-hidden border border-slate-800 shadow-inner">
-              {/* Mock Grid */}
               <div className="absolute inset-0 opacity-10 pointer-events-none">
                 <div className="absolute top-1/4 left-0 w-full h-0.5 bg-blue-500"></div>
                 <div className="absolute top-3/4 left-0 w-full h-0.5 bg-blue-500"></div>
@@ -435,55 +427,53 @@ export default function ExploreView({
                 <div className="absolute top-1/3 left-1/4 w-32 h-32 rounded-full border border-blue-500 animate-pulse"></div>
               </div>
 
-              {/* Radar glowing ring */}
-              <div className="absolute w-20 h-20 rounded-full bg-blue-500/10 border border-blue-500/30 animate-ping"></div>
+              <div className="absolute w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 animate-ping"></div>
 
-              {/* Traveler locator */}
-              <div className="relative z-10 bg-blue-600 p-2 rounded-full text-white shadow-lg animate-bounce shadow-blue-900/50">
+              <div className="relative z-10 bg-blue-600 p-2 rounded-full text-white shadow-lg animate-bounce shadow-blue-950">
                 <Navigation className="w-4 h-4 transform rotate-45" />
               </div>
 
-              {/* Render Pins */}
+              {/* Mapped Pins */}
               {exploreTab === "stores" 
                 ? countrySupermarkets.map((sm: any, idx: number) => (
-                    <div
+                    <button
                       key={sm.id || idx}
                       style={{ 
-                        top: `${20 + ((idx % 3) * 25)}%`, 
-                        left: `${15 + ((idx % 2) * 50)}%` 
+                        top: `${20 + ((idx % 3) * 22)}%`, 
+                        left: `${15 + ((idx % 2) * 55)}%` 
                       }}
-                      className="absolute z-10 flex flex-col items-center cursor-pointer scale-95 hover:scale-110 transition-all"
+                      className="absolute z-10 flex flex-col items-center scale-90 hover:scale-100 transition-all cursor-pointer"
                       onClick={() => setActiveSupermarket(sm)}
                     >
                       <div className={`p-1.5 rounded-full text-white shadow ${
                         activeSupermarket?.id === sm.id ? "bg-blue-600 animate-pulse" : "bg-emerald-600"
                       }`}>
-                        <Store className="w-3.5 h-3.5" />
+                        <Store className="w-3 h-3" />
                       </div>
-                      <span className="text-[8px] font-bold bg-white border border-slate-100 text-slate-800 px-1 py-0.2 rounded mt-1 shadow whitespace-nowrap font-mono">
+                      <span className="text-[8px] font-bold bg-white border border-slate-200 text-slate-800 px-1 py-0.2 rounded mt-1 shadow whitespace-nowrap font-mono">
                         {sm.name} ({(idx + 1) * 0.4}{isAr ? " كم" : "km"})
                       </span>
-                    </div>
+                    </button>
                   ))
                 : countryAttractions.map((att: any, idx: number) => (
-                    <div
+                    <button
                       key={att.id || idx}
                       style={{ 
-                        top: `${15 + ((idx % 3) * 30)}%`, 
+                        top: `${15 + ((idx % 3) * 25)}%`, 
                         left: `${20 + ((idx % 2) * 50)}%` 
                       }}
-                      className="absolute z-10 flex flex-col items-center cursor-pointer scale-95 hover:scale-110 transition-all"
+                      className="absolute z-10 flex flex-col items-center scale-90 hover:scale-100 transition-all cursor-pointer"
                       onClick={() => setActiveAttraction(att)}
                     >
                       <div className={`p-1.5 rounded-full text-white shadow ${
                         activeAttraction?.id === att.id ? "bg-blue-600 animate-pulse" : "bg-amber-500"
                       }`}>
-                        <Landmark className="w-3.5 h-3.5" />
+                        <Landmark className="w-3 h-3" />
                       </div>
-                      <span className="text-[8px] font-bold bg-white border border-slate-100 text-slate-800 px-1 py-0.2 rounded mt-1 shadow whitespace-nowrap font-mono">
+                      <span className="text-[8px] font-bold bg-white border border-slate-200 text-slate-800 px-1 py-0.2 rounded mt-1 shadow whitespace-nowrap font-mono">
                         {att.name} ({(idx + 1) * 0.6}{isAr ? " كم" : "km"})
                       </span>
-                    </div>
+                    </button>
                   ))
               }
             </div>
@@ -491,13 +481,15 @@ export default function ExploreView({
         </div>
       )}
 
-      {/* Main Interactive Tab Content */}
-      <div className="space-y-3">
+      {/* 4. Main Tab Rendering Area */}
+      <div className="space-y-3 flex-1 overflow-y-auto no-scrollbar">
+        
+        {/* TAB 1: Stores */}
         {exploreTab === "stores" && (
           countrySupermarkets.length === 0 ? (
-            <div className="text-center py-10 bg-white border border-slate-100 rounded-3xl text-slate-400">
+            <div className="text-center py-10 bg-white border border-slate-200/85 rounded-3xl text-slate-400">
               <Store className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs">{t("explore.no_stores")}</p>
+              <p className="text-xs font-semibold">{t("explore.no_stores")}</p>
             </div>
           ) : (
             countrySupermarkets.map((sm: any, idx: number) => {
@@ -508,7 +500,7 @@ export default function ExploreView({
                   className={`border rounded-3xl overflow-hidden transition-all duration-300 ${
                     isExpanded 
                       ? "bg-white border-blue-200 shadow-sm" 
-                      : "bg-white border-slate-100 hover:border-blue-100 shadow-sm"
+                      : "bg-white border-slate-200/60 hover:border-blue-100 shadow-sm"
                   }`}
                 >
                   <button
@@ -517,49 +509,49 @@ export default function ExploreView({
                   >
                     <div className="space-y-1 flex-1 text-left">
                       <div className={`flex items-center gap-2 ${isAr ? "flex-row-reverse" : "flex-row"}`}>
-                        <span className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-100 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-0.5">
+                        <span className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-100 px-2 py-0.5 rounded-full font-black uppercase tracking-wider flex items-center gap-0.5">
                           <CheckCircle2 className="w-3 h-3" />
                           {t("explore.trust_score", { score: sm.trustScore })}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {t("explore.prices")} <strong className="text-blue-600 font-bold">{sm.priceTier}</strong>
+                        <span className="text-[10px] text-slate-400 font-mono font-bold">
+                          {t("explore.prices")} <strong className="text-blue-600 font-extrabold">{sm.priceTier}</strong>
                         </span>
                       </div>
-                      <h3 className="text-sm font-display font-bold text-slate-800 mt-1">{sm.name}</h3>
-                      <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                      <h3 className="text-sm font-bold text-slate-800 mt-1">{sm.name}</h3>
+                      <p className="text-[11px] text-slate-500 flex items-center gap-1 font-medium">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {sm.hours}
+                        <span>{sm.hours}</span>
                       </p>
                     </div>
 
-                    <ChevronRight className={`w-5 h-5 text-slate-400 transform transition-transform duration-200 shrink-0 ${isExpanded ? "rotate-95 text-blue-600" : ""} ${isAr ? "transform rotate-180" : ""}`} />
+                    <ChevronRight className={`w-5 h-5 text-slate-400 transform transition-transform duration-200 shrink-0 ${isExpanded ? "rotate-90 text-blue-600" : ""} ${isAr ? "rotate-180" : ""}`} />
                   </button>
 
                   {isExpanded && (
-                    <div className="px-4 pb-4 border-t border-slate-100 pt-3.5 space-y-3.5 animate-in fade-in duration-200 text-left">
+                    <div className="px-4 pb-4 border-t border-slate-100 pt-3.5 space-y-3.5 text-left animate-fade-in">
                       <div className="space-y-1">
-                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("explore.local_overview")}</span>
-                        <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100 text-left">
+                        <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">{t("explore.local_overview")}</span>
+                        <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100">
                           {sm.description}
                         </p>
                       </div>
 
                       <div className="space-y-1.5">
-                        <span className="text-[9px] text-blue-600 font-bold uppercase tracking-wider flex items-center gap-1 justify-start">
+                        <span className="text-[9px] text-blue-600 font-extrabold uppercase tracking-wider flex items-center gap-1 justify-start">
                           <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                          {t("explore.specialties")}
+                          <span>{t("explore.specialties")}</span>
                         </span>
-                        <p className="text-xs text-blue-900 leading-relaxed bg-blue-50/50 p-3 rounded-2xl border border-blue-100/30 font-medium text-left">
+                        <p className="text-xs text-blue-900 leading-relaxed bg-blue-50/50 p-3 rounded-2xl border border-blue-100/30 font-bold">
                           {sm.specialty}
                         </p>
                       </div>
 
                       {sm.reviews && sm.reviews.length > 0 && (
                         <div className="space-y-2">
-                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("explore.reviews")}</span>
+                          <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">{t("explore.reviews")}</span>
                           <div className="flex flex-col gap-2">
                             {sm.reviews.map((rev: any, rIdx: number) => (
-                              <div key={rIdx} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-[11px] space-y-1 text-left">
+                              <div key={rIdx} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-[11px] space-y-1">
                                 <div className={`flex justify-between items-center ${isAr ? "flex-row-reverse" : "flex-row"}`}>
                                   <span className="font-bold text-slate-700">{rev.author}</span>
                                   <div className="flex gap-0.5 text-amber-400">
@@ -568,7 +560,7 @@ export default function ExploreView({
                                     ))}
                                   </div>
                                 </div>
-                                <p className="text-slate-500 leading-relaxed italic text-left">"{rev.text}"</p>
+                                <p className="text-slate-500 leading-relaxed italic">"{rev.text}"</p>
                               </div>
                             ))}
                           </div>
@@ -582,11 +574,12 @@ export default function ExploreView({
           )
         )}
 
+        {/* TAB 2: Landmarks */}
         {exploreTab === "landmarks" && (
           countryAttractions.length === 0 ? (
-            <div className="text-center py-10 bg-white border border-slate-100 rounded-3xl text-slate-400">
+            <div className="text-center py-10 bg-white border border-slate-200/85 rounded-3xl text-slate-400">
               <Compass className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs">{t("explore.no_landmarks")}</p>
+              <p className="text-xs font-semibold">{t("explore.no_landmarks")}</p>
             </div>
           ) : (
             countryAttractions.map((att: any, idx: number) => {
@@ -597,7 +590,7 @@ export default function ExploreView({
                   className={`border rounded-3xl overflow-hidden transition-all duration-300 ${
                     isExpanded 
                       ? "bg-white border-blue-200 shadow-sm" 
-                      : "bg-white border-slate-100 hover:border-blue-100 shadow-sm"
+                      : "bg-white border-slate-200/60 hover:border-blue-100 shadow-sm"
                   }`}
                 >
                   <button
@@ -606,38 +599,38 @@ export default function ExploreView({
                   >
                     <div className="space-y-1 flex-1 text-left">
                       <div className={`flex items-center gap-2 ${isAr ? "flex-row-reverse" : "flex-row"}`}>
-                        <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
+                        <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full font-black uppercase tracking-wider flex items-center gap-1">
                           <Landmark className="w-3 h-3 text-blue-500" />
-                          {att.category}
+                          <span>{att.category}</span>
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono flex items-center gap-0.5">
+                        <span className="text-[10px] text-slate-400 font-mono font-bold flex items-center gap-0.5">
                           <Ticket className="w-3.5 h-3.5 text-slate-400" />
-                          {att.ticketPriceLocal === 0 ? (isAr ? "مجاني" : "Free") : `${currentCountry.currencySymbol}${att.ticketPriceLocal}`}
+                          <span>{att.ticketPriceLocal === 0 ? (isAr ? "مجاني" : "Free") : `${currentCountry.currencySymbol}${att.ticketPriceLocal}`}</span>
                         </span>
                       </div>
-                      <h3 className="text-sm font-display font-bold text-slate-800 mt-1">{att.name}</h3>
-                      <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                      <h3 className="text-sm font-bold text-slate-800 mt-1">{att.name}</h3>
+                      <p className="text-[11px] text-slate-500 flex items-center gap-1 font-medium">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {t("explore.hours_label")} {att.hours}
+                        <span>{t("explore.hours_label")} {att.hours}</span>
                       </p>
                     </div>
 
-                    <ChevronRight className={`w-5 h-5 text-slate-400 transform transition-transform duration-200 shrink-0 ${isExpanded ? "rotate-95 text-blue-600" : ""} ${isAr ? "transform rotate-180" : ""}`} />
+                    <ChevronRight className={`w-5 h-5 text-slate-400 transform transition-transform duration-200 shrink-0 ${isExpanded ? "rotate-90 text-blue-600" : ""} ${isAr ? "rotate-180" : ""}`} />
                   </button>
 
                   {isExpanded && (
-                    <div className="px-4 pb-4 border-t border-slate-100 pt-3.5 space-y-3.5 animate-in fade-in duration-200 text-left">
+                    <div className="px-4 pb-4 border-t border-slate-100 pt-3.5 space-y-3.5 text-left animate-fade-in">
                       <div className="space-y-1">
-                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("explore.overview")}</span>
-                        <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100 text-left">
+                        <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">{t("explore.overview")}</span>
+                        <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100">
                           {att.description}
                         </p>
                       </div>
 
                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between text-left">
-                        <div className="space-y-0.5 text-left">
-                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("explore.converted_ticket")}</span>
-                          <p className="text-xs font-bold text-slate-800 text-left">
+                        <div className="space-y-0.5">
+                          <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">{t("explore.converted_ticket")}</span>
+                          <p className="text-xs font-bold text-slate-800">
                             {getTicketPriceConverted(att.ticketPriceLocal)}
                           </p>
                         </div>
@@ -645,10 +638,10 @@ export default function ExploreView({
                       </div>
 
                       {att.tips && att.tips.length > 0 && (
-                        <div className="space-y-2 text-left">
-                          <span className="text-[9px] text-red-500 font-bold uppercase tracking-wider flex items-center gap-1 justify-start">
+                        <div className="space-y-2">
+                          <span className="text-[9px] text-red-500 font-extrabold uppercase tracking-wider flex items-center gap-1 justify-start">
                             <ShieldAlert className="w-4 h-4 text-red-600" />
-                            {t("explore.scam_tips")}
+                            <span>{t("explore.scam_tips")}</span>
                           </span>
                           <div className="flex flex-col gap-2">
                             {att.tips.map((tip: string, tIdx: number) => (
@@ -657,7 +650,7 @@ export default function ExploreView({
                                 className={`bg-red-50/50 border-red-500 p-3 rounded-2xl text-[11px] text-slate-600 flex gap-2 ${isAr ? "border-r-2 text-right flex-row-reverse" : "border-l-2 text-left"}`}
                               >
                                 <div className="text-xs shrink-0 font-bold text-red-500">0{tIdx + 1}</div>
-                                <span className="leading-relaxed text-left">{tip}</span>
+                                <span className="leading-relaxed">{tip}</span>
                               </div>
                             ))}
                           </div>
@@ -671,65 +664,61 @@ export default function ExploreView({
           )
         )}
 
+        {/* TAB 3: Country Guide (Gemini Dynamic Bento layout) */}
         {exploreTab === "guide" && (
           !activeGuide ? (
-            <div className="text-center py-10 bg-white border border-slate-100 rounded-3xl text-slate-400">
+            <div className="text-center py-12 bg-white border border-slate-200/85 rounded-3xl text-slate-400">
               <Globe className="w-8 h-8 text-blue-500 mx-auto mb-2 animate-bounce" />
-              <p className="text-xs font-bold text-slate-600 mb-1">
+              <p className="text-xs font-black text-slate-600 mb-1">
                 {isAr ? "تحميل دليل السفر الذكي لـ " : "Loading AI Travel Guide for "} {isAr && currentCountry.nameAr ? currentCountry.nameAr : currentCountry.name}...
               </p>
-              <p className="text-[10px] text-slate-400">{isAr ? "سيقوم Gemini بإنشاء دليل مخصص كامل الآن!" : "Gemini is generating a complete bespoke guide now!"}</p>
+              <p className="text-[10px] text-slate-400 font-medium">{isAr ? "يقوم الذكاء الاصطناعي ببناء دليل مخصص الآن..." : "AI is crafting a bespoke guide for you..."}</p>
             </div>
           ) : (
             <div className="space-y-4 animate-fade-in text-left">
               
-              {/* Vibe and Cultural Advisories Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                
-                {/* Cultural Manners Card */}
-                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-2">
-                  <span className="text-[9px] bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1">
-                    <Smile className="w-3.5 h-3.5 text-indigo-600" />
-                    {isAr ? "الثقافة والآداب" : "Culture & Manners"}
-                  </span>
-                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                    {activeGuide.vibe.localVibe}
-                  </p>
-                </div>
-
-                {/* Practical Info Bento Box */}
-                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
-                  <span className="text-[9px] bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1">
-                    <Info className="w-3.5 h-3.5 text-slate-600" />
-                    {isAr ? "تفاصيل عملية" : "Practical Logistics"}
-                  </span>
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
-                      <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "مياه الصنبور" : "Tap Water"}</span>
-                      <p className="font-bold text-slate-800 mt-0.5">{activeGuide.vibe.tapWater}</p>
-                    </div>
-                    <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
-                      <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الإكراميات" : "Tipping"}</span>
-                      <p className="font-bold text-slate-800 mt-0.5">{activeGuide.vibe.tipping}</p>
-                    </div>
-                    <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
-                      <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الدفع بالبطاقة" : "Card vs Cash"}</span>
-                      <p className="font-bold text-slate-800 mt-0.5">{activeGuide.vibe.cardPayment}</p>
-                    </div>
-                    <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
-                      <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "النظافة" : "Hygiene"}</span>
-                      <p className="font-bold text-slate-800 mt-0.5">{activeGuide.vibe.hygiene}</p>
-                    </div>
-                  </div>
-                </div>
-
+              {/* Culture and manners card */}
+              <div className="bg-white border border-slate-200/85 rounded-3xl p-4 shadow-sm space-y-2">
+                <span className="text-[9px] bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-black uppercase tracking-wider inline-flex items-center gap-1">
+                  <Smile className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>{isAr ? "الثقافة والآداب العامة" : "Culture & Manners"}</span>
+                </span>
+                <p className="text-xs text-slate-600 leading-relaxed font-bold">
+                  {activeGuide.vibe.localVibe}
+                </p>
               </div>
 
-              {/* Climate and Season Weather Bento panel */}
-              <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+              {/* Bento Practical logistics list */}
+              <div className="bg-white border border-slate-200/85 rounded-3xl p-4 shadow-sm space-y-3">
+                <span className="text-[9px] bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-black uppercase tracking-wider inline-flex items-center gap-1">
+                  <Info className="w-3.5 h-3.5 text-slate-600" />
+                  <span>{isAr ? "معلومات هامة وعملية" : "Practical Logistics"}</span>
+                </span>
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "مياه الصنبور" : "Tap Water"}</span>
+                    <p className="font-extrabold text-slate-800 mt-0.5">{activeGuide.vibe.tapWater}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الإكراميات" : "Tipping"}</span>
+                    <p className="font-extrabold text-slate-800 mt-0.5">{activeGuide.vibe.tipping}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الدفع بالبطاقة" : "Card vs Cash"}</span>
+                    <p className="font-extrabold text-slate-800 mt-0.5">{activeGuide.vibe.cardPayment}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "مستوى النظافة" : "Hygiene"}</span>
+                    <p className="font-extrabold text-slate-800 mt-0.5">{activeGuide.vibe.hygiene}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Climate seasonal details */}
+              <div className="bg-white border border-slate-200/85 rounded-3xl p-4 shadow-sm space-y-3">
                 <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <CloudSun className="w-4 h-4 text-amber-500" />
-                  {isAr ? "المناخ وأفضل مواسم الزيارة" : "Climate & Best Times to Visit"}
+                  <span>{isAr ? "المناخ وأفضل مواسم الزيارة" : "Climate & Best Times to Visit"}</span>
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
                   <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
@@ -751,23 +740,23 @@ export default function ExploreView({
                 </div>
               </div>
 
-              {/* Visa and Entry Guidelines */}
+              {/* Visa details */}
               <div className="bg-blue-50/50 border border-blue-100/50 rounded-3xl p-4 flex gap-3">
                 <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                 <div className="text-xs space-y-1">
                   <p className="font-bold text-blue-900">{isAr ? "متطلبات الدخول والتأشيرة" : "Visa & Entry Advisory"}</p>
-                  <p className="text-slate-600 leading-relaxed text-[11px]">{activeGuide.visaInfo}</p>
+                  <p className="text-slate-600 leading-relaxed text-[11px] font-medium">{activeGuide.visaInfo}</p>
                 </div>
               </div>
 
-              {/* Local Travel Phrasebook */}
-              <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+              {/* Language phrasebook */}
+              <div className="bg-white border border-slate-200/85 rounded-3xl p-4 shadow-sm space-y-3">
                 <div className="flex justify-between items-center">
                   <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Languages className="w-4 h-4 text-emerald-600" />
-                    {isAr ? "القاموس السياحي الذكي" : "Local Travel Phrasebook"}
+                    <span>{isAr ? "القاموس السياحي الذكي" : "Local Travel Phrasebook"}</span>
                   </h4>
-                  <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-lg font-bold text-slate-600">
+                  <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-lg font-bold text-slate-600 font-mono">
                     {activeGuide.languageName}
                   </span>
                 </div>
@@ -776,7 +765,7 @@ export default function ExploreView({
                     <div key={idx} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex justify-between items-center text-xs gap-3">
                       <div className="text-left">
                         <p className="font-mono font-bold text-blue-600 text-[13px]">{word.word}</p>
-                        <p className="text-[10px] text-slate-400 italic">“{word.pronunciation}”</p>
+                        <p className="text-[10px] text-slate-400 italic font-medium">“{word.pronunciation}”</p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-slate-800">{word.meaning}</p>
@@ -786,37 +775,37 @@ export default function ExploreView({
                 </div>
               </div>
 
-              {/* Local Logistics Directories: Airports, Hotels, Restaurants, Transportation */}
+              {/* Logistics sections */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider block mt-2 px-1">
                   {isAr ? "الدليل الخدمي المحلي" : "Local Services Directory"}
                 </h4>
 
                 {/* Transportation */}
-                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                <div className="bg-white border border-slate-200/85 rounded-3xl p-4 shadow-sm space-y-3">
                   <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1">
                     <Navigation className="w-4 h-4 text-blue-500" />
-                    {isAr ? "المواصلات العامة وكيفية التنقل" : "Public Transit & Transport"}
+                    <span>{isAr ? "المواصلات العامة وكيفية التنقل" : "Public Transit & Transport"}</span>
                   </h5>
                   <div className="flex flex-col gap-2">
                     {activeGuide.transports.map((t, idx) => (
                       <div key={idx} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-xs space-y-1">
                         <div className="flex justify-between items-center">
                           <strong className="text-slate-800">{t.type}</strong>
-                          <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-mono font-bold">{t.cost}</span>
+                          <span className="text-[10px] bg-blue-100 text-blue-750 px-2 py-0.5 rounded font-mono font-bold">{t.cost}</span>
                         </div>
-                        <p className="text-slate-500 leading-relaxed text-[11px]">{t.description}</p>
-                        {t.tips && <p className="text-blue-700 text-[10px] font-medium">💡 {t.tips}</p>}
+                        <p className="text-slate-500 leading-relaxed text-[11px] font-medium">{t.description}</p>
+                        {t.tips && <p className="text-blue-700 text-[10px] font-bold">💡 {t.tips}</p>}
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* Restaurants */}
-                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                <div className="bg-white border border-slate-200/85 rounded-3xl p-4 shadow-sm space-y-3">
                   <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1">
                     <Utensils className="w-4 h-4 text-orange-500" />
-                    {isAr ? "المطاعم وتجارب التذوق المحلية" : "Recommended Dining & Cuisine"}
+                    <span>{isAr ? "المطاعم وتجارب التذوق المحلية" : "Recommended Dining & Cuisine"}</span>
                   </h5>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {activeGuide.restaurants.map((r, idx) => (
@@ -824,22 +813,22 @@ export default function ExploreView({
                         <div className="flex justify-between items-start">
                           <div>
                             <strong className="text-slate-800 block text-[13px]">{r.name}</strong>
-                            <span className="text-[10px] text-slate-400">{r.cuisine}</span>
+                            <span className="text-[10px] text-slate-400 font-semibold">{r.cuisine}</span>
                           </div>
-                          <span className="text-[10px] font-bold text-blue-600">{r.priceTier}</span>
+                          <span className="text-[10px] font-bold text-blue-600 font-mono">{r.priceTier}</span>
                         </div>
-                        <p className="text-slate-500 text-[11px] leading-relaxed">{r.description}</p>
-                        <p className="text-emerald-700 text-[10px] font-medium bg-emerald-50 p-1.5 rounded-xl inline-block">⭐ {isAr ? "الطبق المقترح" : "Specialty"}: {r.specialty}</p>
+                        <p className="text-slate-500 text-[11px] leading-relaxed font-medium">{r.description}</p>
+                        <p className="text-emerald-700 text-[10px] font-bold bg-emerald-50 p-1.5 rounded-xl inline-block">⭐ {isAr ? "الطبق المقترح" : "Specialty"}: {r.specialty}</p>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* Hotels */}
-                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                <div className="bg-white border border-slate-200/85 rounded-3xl p-4 shadow-sm space-y-3">
                   <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1">
                     <Hotel className="w-4 h-4 text-indigo-500" />
-                    {isAr ? "الفنادق وأماكن الإقامة الموصى بها" : "Recommended Stays & Hotels"}
+                    <span>{isAr ? "الفنادق وأماكن الإقامة الموصى بها" : "Recommended Stays & Hotels"}</span>
                   </h5>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {activeGuide.hotels.map((h, idx) => (
@@ -853,9 +842,9 @@ export default function ExploreView({
                               ))}
                             </div>
                           </div>
-                          <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold">{h.priceTier}</span>
+                          <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold font-mono">{h.priceTier}</span>
                         </div>
-                        <p className="text-slate-500 text-[11px] leading-relaxed">{h.description}</p>
+                        <p className="text-slate-500 text-[11px] leading-relaxed font-medium">{h.description}</p>
                         {h.tips && <p className="text-slate-600 text-[10px] italic">💡 {h.tips}</p>}
                       </div>
                     ))}
@@ -863,17 +852,17 @@ export default function ExploreView({
                 </div>
 
                 {/* Airports */}
-                <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
+                <div className="bg-white border border-slate-200/85 rounded-3xl p-4 shadow-sm space-y-3">
                   <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1">
                     <Plane className="w-4 h-4 text-emerald-500" />
-                    {isAr ? "المطارات وبوابات الدخول" : "Airports & Portals"}
+                    <span>{isAr ? "المطارات وبوابات الدخول" : "Airports & Portals"}</span>
                   </h5>
                   <div className="flex flex-col gap-2">
                     {activeGuide.airports.map((ap, idx) => (
                       <div key={idx} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-xs flex justify-between items-start gap-3">
-                        <div className="space-y-0.5">
+                        <div className="space-y-0.5 text-left">
                           <strong className="text-slate-800 block">{ap.name} ({ap.city})</strong>
-                          <p className="text-slate-500 text-[11px] leading-relaxed">{ap.description}</p>
+                          <p className="text-slate-500 text-[11px] leading-relaxed font-medium">{ap.description}</p>
                         </div>
                         <span className="bg-slate-200 text-slate-700 font-mono font-bold text-xs px-2.5 py-1 rounded-xl uppercase tracking-wider shrink-0">
                           {ap.code}
@@ -885,28 +874,28 @@ export default function ExploreView({
 
               </div>
 
-              {/* Emergency Numbers Card */}
-              <div className="bg-red-50 border border-red-100 rounded-3xl p-4 space-y-3">
+              {/* Emergency Speed Dial Bento box */}
+              <div className="bg-red-50 border border-red-150 rounded-3xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-red-800 flex items-center gap-1.5">
                   <PhoneCall className="w-4 h-4 text-red-600 animate-pulse" />
-                  {isAr ? "خطوط الطوارئ والاتصال السريع" : "Emergency Speed Dial Numbers"}
+                  <span>{isAr ? "خطوط الطوارئ والاتصال السريع" : "Emergency Speed Dial Numbers"}</span>
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
                   <div className="bg-white p-2.5 rounded-2xl border border-red-100">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الشرطة" : "Police"}</span>
-                    <a href={`tel:${activeGuide.emergencyNumbers.police}`} className="font-mono font-bold text-red-600 text-sm">{activeGuide.emergencyNumbers.police}</a>
+                    <a href={`tel:${activeGuide.emergencyNumbers.police}`} className="font-mono font-bold text-red-600 text-sm hover:underline">{activeGuide.emergencyNumbers.police}</a>
                   </div>
                   <div className="bg-white p-2.5 rounded-2xl border border-red-100">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الإسعاف" : "Ambulance"}</span>
-                    <a href={`tel:${activeGuide.emergencyNumbers.ambulance}`} className="font-mono font-bold text-red-600 text-sm">{activeGuide.emergencyNumbers.ambulance}</a>
+                    <a href={`tel:${activeGuide.emergencyNumbers.ambulance}`} className="font-mono font-bold text-red-600 text-sm hover:underline">{activeGuide.emergencyNumbers.ambulance}</a>
                   </div>
                   <div className="bg-white p-2.5 rounded-2xl border border-red-100">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "الإطفاء" : "Fire"}</span>
-                    <a href={`tel:${activeGuide.emergencyNumbers.fire}`} className="font-mono font-bold text-red-600 text-sm">{activeGuide.emergencyNumbers.fire}</a>
+                    <a href={`tel:${activeGuide.emergencyNumbers.fire}`} className="font-mono font-bold text-red-600 text-sm hover:underline">{activeGuide.emergencyNumbers.fire}</a>
                   </div>
                   <div className="bg-white p-2.5 rounded-2xl border border-red-100">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">{isAr ? "العام" : "General"}</span>
-                    <a href={`tel:${activeGuide.emergencyNumbers.general}`} className="font-mono font-bold text-red-600 text-sm">{activeGuide.emergencyNumbers.general}</a>
+                    <a href={`tel:${activeGuide.emergencyNumbers.general}`} className="font-mono font-bold text-red-600 text-sm hover:underline">{activeGuide.emergencyNumbers.general}</a>
                   </div>
                 </div>
               </div>
@@ -916,12 +905,12 @@ export default function ExploreView({
         )}
       </div>
 
-      {/* Advisory Bottom Card */}
-      <div className="bg-blue-50/40 border border-blue-100/20 p-4 rounded-3xl flex gap-3.5 text-left">
+      {/* 5. Safe Travel Protocol footer */}
+      <div className="bg-blue-50/45 border border-blue-100/30 p-4 rounded-3xl flex gap-3 text-left shrink-0">
         <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
         <div className="text-xs space-y-1 text-left">
           <p className="font-bold text-blue-900">{t("explore.protocol_title")}</p>
-          <p className="text-slate-500 leading-relaxed text-[11px] text-left">
+          <p className="text-slate-500 leading-relaxed text-[11px] font-medium text-left">
             {t("explore.protocol_desc")}
           </p>
         </div>
