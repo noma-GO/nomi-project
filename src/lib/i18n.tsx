@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { auth, db } from "./firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
+import { auth, db, doc, getDoc, updateDoc, onAuthStateChanged } from "./firebase";
 
 export type Language = "en" | "ar";
 

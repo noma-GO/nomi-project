@@ -21,17 +21,15 @@ import AssistantView from "./components/AssistantView";
 import CountrySelectionView from "./components/CountrySelectionView";
 
 // Import Firebase config & SDKs
-import { auth, db } from "./lib/firebase";
 import { 
+  auth, db,
   signInAnonymously, onAuthStateChanged, signOut, 
   signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile,
   linkWithCredential, EmailAuthProvider,
-  User as FirebaseUser
-} from "firebase/auth";
-import { 
   collection, doc, setDoc, addDoc, onSnapshot, getDocs, 
   query, orderBy, deleteDoc, updateDoc, increment, getDoc
-} from "firebase/firestore";
+} from "./lib/firebase";
+import { User as FirebaseUser } from "firebase/auth";
 import { useLanguage, Language } from "./lib/i18n";
 import OnboardingView from "./components/OnboardingView";
 
