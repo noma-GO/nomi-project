@@ -28,13 +28,13 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onStart() {
+    public void onStart() {
         Log.d(TAG, "[ANDROID MAIN] onStart called.");
         super.onStart();
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         Log.d(TAG, "[ANDROID MAIN] onResume called.");
         super.onResume();
     }
