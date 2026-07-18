@@ -2,7 +2,8 @@
   "name": "Nomi",
   "description": "Your ultimate travel companion. Scan products with the camera, read barcodes, compare and contribute local prices, translate text instantly, find trusted supermarkets, and discover tourist attractions.",
   "requestFramePermissions": [
-    "camera"
+    "camera",
+    "geolocation"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

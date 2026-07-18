@@ -54,43 +54,56 @@ export default function ExploreView({
     setGpsStatus("searching");
     setGpsError("");
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setGpsStatus("success");
-        
-        // Accurate location calibration
-        // France is approx Lat 43-50, Long -5-10
-        // Italy is approx Lat 36-47, Long 6-19
-        // Japan is approx Lat 30-45, Long 130-145
-        // Thailand is approx Lat 5-21, Long 97-106
-        // Egypt is approx Lat 22-31, Long 25-35
-        let matchedCode = "JP"; // default
-        if (latitude > 42 && latitude < 51 && longitude > -5 && longitude < 10) {
-          matchedCode = "FR";
-        } else if (latitude > 35 && latitude < 48 && longitude > 6 && longitude < 20) {
-          matchedCode = "IT";
-        } else if (latitude > 5 && latitude < 21 && longitude > 96 && longitude < 106) {
-          matchedCode = "TH";
-        } else if (latitude > 21 && latitude < 32 && longitude > 24 && longitude < 36) {
-          matchedCode = "EG";
-        } else {
-          // If no coordinate zone matches, keep current or default to a common tourist spot like JP
-          matchedCode = "JP";
-        }
+    const targets = [
+      { code: "JP", lat: 35.6762, lng: 139.6503 },
+      { code: "US", lat: 37.0902, lng: -95.7129 },
+      { code: "IT", lat: 41.9028, lng: 12.4964 },
+      { code: "FR", lat: 48.8566, lng: 2.3522 },
+      { code: "TH", lat: 13.7563, lng: 100.5018 },
+      { code: "MX", lat: 19.4326, lng: -99.1332 },
+    ];
 
-        onChangeDestination(matchedCode);
-      },
+    const successCallback = (position: any) => {
+      const { latitude, longitude } = position.coords;
+      setGpsStatus("success");
+      
+      let matchedCode = "JP";
+      let minDistance = Infinity;
+      for (const target of targets) {
+        const dy = latitude - target.lat;
+        const dx = longitude - target.lng;
+        const dist = Math.sqrt(dy * dy + dx * dx);
+        if (dist < minDistance) {
+          minDistance = dist;
+          matchedCode = target.code;
+        }
+      }
+
+      onChangeDestination(matchedCode);
+    };
+
+    const gpsOptionsHigh = { timeout: 4000, enableHighAccuracy: true, maximumAge: 10000 };
+    const gpsOptionsLow = { timeout: 8000, enableHighAccuracy: false, maximumAge: 60000 };
+
+    navigator.geolocation.getCurrentPosition(
+      successCallback,
       (error) => {
-        console.warn("GPS Permission or detection error:", error);
-        setGpsStatus("failed");
-        setGpsError(
-          isAr 
-            ? "تعذر الاتصال بـ GPS. يرجى تفعيل الموقع أو تحديد الوجهة يدويًا." 
-            : "GPS satellite connection unavailable. Enable location access or select manually."
+        console.warn("GPS High Accuracy failed, retrying with cellular/wifi standard accuracy...", error);
+        navigator.geolocation.getCurrentPosition(
+          successCallback,
+          (secondError) => {
+            console.error("All GPS attempts failed:", secondError);
+            setGpsStatus("failed");
+            setGpsError(
+              isAr 
+                ? "تعذر الاتصال بـ GPS. يرجى تفعيل الموقع أو تحديد الوجهة يدويًا." 
+                : "GPS satellite connection unavailable. Enable location access or select manually."
+            );
+          },
+          gpsOptionsLow
         );
       },
-      { timeout: 8000, enableHighAccuracy: true }
+      gpsOptionsHigh
     );
   };
 
@@ -121,6 +134,15 @@ export default function ExploreView({
       fetchCountryGuide(currentCountry.name);
     }
   }, [currentCountry]);
+
+  // Auto-detect location on first screen mount
+  useEffect(() => {
+    const alreadyDetected = sessionStorage.getItem("nomi_gps_auto_detected") === "true";
+    if (!alreadyDetected) {
+      handleDetectLocation();
+      sessionStorage.setItem("nomi_gps_auto_detected", "true");
+    }
+  }, []);
 
   const fetchCountryGuide = async (name: string) => {
     setIsSearching(true);
