@@ -67,6 +67,10 @@ export default function App() {
   const [isCountrySelectorOpen, setIsCountrySelectorOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [translationLogs, setTranslationLogs] = useState<TranslationLog[]>([]);
+  
+  // Shared states for Map Navigation and Category triggers from Nomi Assistant
+  const [mapNavigationPOI, setMapNavigationPOI] = useState<any | null>(null);
+  const [mapFilterOverride, setMapFilterOverride] = useState<string | null>(null);
 
   // Authenticated states
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
@@ -555,6 +559,10 @@ export default function App() {
             countryGuides={countryGuides}
             onChangeDestination={handleChangeDestination}
             onOpenCountrySelector={() => setIsCountrySelectorOpen(true)}
+            mapNavigationPOI={mapNavigationPOI}
+            setMapNavigationPOI={setMapNavigationPOI}
+            mapFilterOverride={mapFilterOverride}
+            setMapFilterOverride={setMapFilterOverride}
           />
         )}
 
@@ -579,6 +587,8 @@ export default function App() {
             currentCountry={currentCountry}
             homeCountry={homeCountry}
             onNavigate={setActiveScreen}
+            setMapNavigationPOI={setMapNavigationPOI}
+            setMapFilterOverride={setMapFilterOverride}
           />
         )}
 

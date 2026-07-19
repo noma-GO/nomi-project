@@ -68,15 +68,19 @@ export default function OnboardingView({
     onComplete(selectedCountry, language);
   };
 
-  // GPS Location Detection
+  // GPS Location Detection with Automated Step Transition
   const handleDetectLocation = () => {
     setGpsLoading(true);
     setGpsError(null);
     setGpsSuccessMessage(null);
 
     if (!navigator.geolocation) {
-      setGpsError(isAr ? "نظام تحديد المواقع GPS غير مدعوم على هذا الجهاز." : "GPS is not supported on this device.");
+      setGpsError(isAr ? "نظام تحديد المواقع GPS غير مدعوم على هذا الجهاز. سيتم استخدام الإعداد الافتراضي..." : "GPS is not supported on this device. Using default...");
       setGpsLoading(false);
+      // Auto-fallback and skip to step 3
+      setTimeout(() => {
+        setStep(3);
+      }, 2000);
       return;
     }
 
@@ -102,15 +106,28 @@ export default function OnboardingView({
                   ? `تم تحديد دولتك تلقائياً بنجاح: ${matchedCountry.flag} ${countryNameLocal}` 
                   : `Successfully detected your country: ${matchedCountry.flag} ${countryNameLocal}`
               );
+              // Automate jump to sign-in step
+              setTimeout(() => {
+                setStep(3);
+              }, 1800);
             } else {
-              setGpsError(isAr ? "تم تحديد موقعك ولكن رمز الدولة غير متوفر بقاعدة البيانات." : "Location detected, but country code is not registered in our app DB.");
+              setGpsError(isAr ? "تم تحديد موقعك ولكن رمز الدولة غير متوفر بقاعدة البيانات. جاري استخدام الإعداد الافتراضي..." : "Location detected, but country code is not registered in our app DB. Using fallback...");
+              setTimeout(() => {
+                setStep(3);
+              }, 2500);
             }
           } else {
-            setGpsError(isAr ? "فشل التعرف على رمز الدولة من الإحداثيات." : "Could not identify country from coordinates.");
+            setGpsError(isAr ? "فشل التعرف على رمز الدولة من الإحداثيات. جاري استخدام الإعداد الافتراضي..." : "Could not identify country from coordinates. Using fallback...");
+            setTimeout(() => {
+              setStep(3);
+            }, 2500);
           }
         } catch (err) {
           console.error("Reverse geocoding error:", err);
-          setGpsError(isAr ? "فشل الإتصال بخادم تحديد المواقع." : "Failed to connect to location resolution server.");
+          setGpsError(isAr ? "فشل الإتصال بخادم تحديد المواقع. جاري استخدام الإعداد الافتراضي..." : "Failed to connect to location resolution server. Using fallback...");
+          setTimeout(() => {
+            setStep(3);
+          }, 2500);
         } finally {
           setGpsLoading(false);
         }
@@ -119,12 +136,16 @@ export default function OnboardingView({
         console.warn("Geolocation error:", error);
         setGpsLoading(false);
         if (error.code === error.PERMISSION_DENIED) {
-          setGpsError(isAr ? "تم رفض إذن الوصول للموقع. يرجى اختيار الدولة يدوياً أدناه." : "Location permission denied. Please select your country manually below.");
+          setGpsError(isAr ? "تم رفض إذن الوصول للموقع. جاري ضبط الإعداد الافتراضي وتخطي الخطوة..." : "Location permission denied. Continuing with default country...");
         } else {
-          setGpsError(isAr ? "فشل تحديد موقعك الحالي. يرجى اختيار الدولة يدوياً." : "Failed to retrieve your current location. Please select manually.");
+          setGpsError(isAr ? "فشل تحديد موقعك الحالي. جاري ضبط الإعداد الافتراضي وتخطي الخطوة..." : "Failed to retrieve your current location. Continuing with default...");
         }
+        // Auto-advance to step 3 on any permission rejection
+        setTimeout(() => {
+          setStep(3);
+        }, 2200);
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 8000 }
     );
   };
 
@@ -253,7 +274,7 @@ export default function OnboardingView({
             </motion.div>
           )}
 
-          {/* STEP 2: GPS Detection */}
+          {/* STEP 2: GPS Detection (Fully Automated, No manual country selection list) */}
           {step === 2 && (
             <motion.div
               key="step2"
@@ -261,108 +282,72 @@ export default function OnboardingView({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: -12 }}
               transition={{ duration: 0.35, ease: "easeOut" }}
-              className="space-y-6"
+              className="space-y-6 flex flex-col justify-center items-center py-6"
             >
               <div className="text-center space-y-3">
-                <div className="inline-flex p-3.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-3xl mb-1 shadow-inner shadow-indigo-500/5">
-                  <MapPin className="w-9 h-9 text-indigo-400 animate-bounce" />
+                <div className="relative inline-flex mb-2">
+                  {/* Glowing Radar Waves */}
+                  <div className="absolute inset-0 rounded-full bg-indigo-500/10 border border-indigo-500/30 animate-ping scale-150 opacity-75"></div>
+                  <div className="absolute inset-0 rounded-full bg-indigo-500/20 border border-indigo-500/20 animate-pulse scale-125"></div>
+                  <div className="relative p-5 bg-indigo-600/15 border border-indigo-500/35 text-indigo-400 rounded-full shadow-lg">
+                    <MapPin className="w-10 h-10 text-indigo-400 animate-bounce" />
+                  </div>
                 </div>
-                <h3 className="text-2xl font-black text-white tracking-tight leading-none">
-                  {isAr ? "تحديد بلدك الأصلي" : "Your Residence Country"}
+                <h3 className="text-xl font-black text-white tracking-tight leading-tight">
+                  {isAr ? "تحديد الموقع الجغرافي التلقائي" : "Automatic Location Resolution"}
                 </h3>
-                <p className="text-xs text-slate-400 leading-normal max-w-xs mx-auto">
+                <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
                   {isAr 
-                    ? "نستخدم نظام تحديد المواقع لتحديد عملتك الأصلية ومقارنة أسعار المنتجات بالعملة المحلية لبلدك دائماً." 
-                    : "We use location access to identify your base currency and run real-time comparisons while abroad."}
+                    ? "نستخدم نظام الـ GPS لتحديد بلدك تلقائياً وضبط العملة الافتراضية المناسبة لمقارنة الأسعار الذكية." 
+                    : "Obtaining GPS coordinates to auto-configure your native currency, ensuring accurate real-time local calculations."}
                 </p>
               </div>
 
-              {/* Automatic Location Panel */}
-              <div className="bg-slate-900/90 border border-slate-800/80 backdrop-blur-2xl rounded-3xl p-5 space-y-4 shadow-2xl shadow-black/40">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-indigo-600/20 text-indigo-400 rounded-xl">
-                      <Navigation className={`w-4 h-4 ${gpsLoading ? "animate-spin" : ""}`} />
-                    </div>
-                    <div className="text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
-                      <p className="text-[9px] text-slate-500 font-extrabold uppercase tracking-widest">
-                        {isAr ? "الموقع الجغرافي التلقائي" : "AUTOMATIC LOCATION"}
-                      </p>
-                      <p className="text-xs font-extrabold text-slate-200 mt-0.5">
-                        {gpsLoading 
-                          ? (isAr ? "جاري فحص الإحداثيات..." : "Scanning GPS coordinates...") 
-                          : (isAr ? "تحديد الدولة تلقائياً" : "Auto-detect country")}
-                      </p>
-                    </div>
+              {/* Automatic Location Progress Board */}
+              <div className="w-full bg-slate-900/90 border border-slate-800/80 backdrop-blur-2xl rounded-3xl p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-indigo-600/25 text-indigo-400 rounded-2xl">
+                    <Navigation className={`w-5 h-5 ${gpsLoading ? "animate-spin" : ""}`} />
                   </div>
-
-                  {!gpsLoading && (
-                    <button
-                      onClick={handleDetectLocation}
-                      className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black rounded-xl transition-all active:scale-95 cursor-pointer shadow-md shadow-indigo-600/20"
-                    >
-                      {isAr ? "إعادة الفحص" : "Re-Scan GPS"}
-                    </button>
-                  )}
+                  <div className="text-left flex-1" style={{ direction: isAr ? "rtl" : "ltr" }}>
+                    <p className="text-[9px] text-indigo-400 font-extrabold uppercase tracking-wider">
+                      {isAr ? "حالة المستشعر الجغرافي" : "SENSORY REVERSE GEOCODING"}
+                    </p>
+                    <p className="text-xs font-black text-slate-200 mt-0.5">
+                      {gpsLoading 
+                        ? (isAr ? "جاري استقبال إحداثيات GPS وحل الترميز..." : "Acquiring satellite signals...") 
+                        : (gpsError ? (isAr ? "تم تشغيل الفيلسيف التلقائي" : "Fallback active") : (isAr ? "اكتمل تحديد بلدك تلقائياً!" : "Country determined successfully!"))}
+                    </p>
+                  </div>
                 </div>
 
                 {gpsLoading && (
-                  <div className="flex items-center gap-2.5 text-xs text-slate-400 bg-slate-950/60 p-3 rounded-2xl border border-slate-850">
-                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                    <span>{isAr ? "يرجى الموافقة على طلب إذن الموقع..." : "Please grant location access when prompted..."}</span>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-400 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-850/80">
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+                    <span>{isAr ? "يرجى قبول الإذن عند ظهور نافذة الهاتف..." : "Please grant GPS access when requested by your device..."}</span>
                   </div>
                 )}
 
                 {gpsError && (
-                  <div className="p-3 bg-rose-500/10 text-rose-400 rounded-2xl text-[10px] font-bold border border-rose-500/20 text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
+                  <div className="p-4 bg-amber-500/10 text-amber-400 rounded-2xl text-[10px] font-bold border border-amber-500/20 leading-relaxed text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
                     ⚠️ {gpsError}
+                    <div className="text-[9px] text-slate-400 font-medium mt-1">
+                      {isAr ? "سيتم التوجيه تلقائياً بالدول المفضلة..." : "Proceeding automatically with baseline configuration..."}
+                    </div>
                   </div>
                 )}
 
                 {gpsSuccessMessage && (
-                  <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-2xl text-[10px] font-bold border border-emerald-500/20 text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
-                    ✨ {gpsSuccessMessage}
+                  <div className="p-4 bg-emerald-500/10 text-emerald-400 rounded-2xl text-xs font-bold border border-emerald-500/20 text-left flex items-start gap-2.5" style={{ direction: isAr ? "rtl" : "ltr" }}>
+                    <Check className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                    <div className="flex-1 leading-normal">
+                      <span>{gpsSuccessMessage}</span>
+                      <p className="text-[9.5px] text-slate-400 font-normal mt-0.5">
+                        {isAr ? "يتم الآن حفظ جواز سفرك والتوجه للخطوة التالية..." : "Saving your local settings and advancing to next step..."}
+                      </p>
+                    </div>
                   </div>
                 )}
-              </div>
-
-              {/* Manual Selection Grid */}
-              <div className="space-y-3">
-                <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest px-1 text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
-                  {isAr ? "أو اختر يدوياً من القائمة المتاحة:" : "OR SELECT MANUALLY:"}
-                </p>
-                <div className="grid grid-cols-2 gap-2 max-h-[150px] overflow-y-auto no-scrollbar pr-1">
-                  {homeCountryOptions.map((country) => {
-                    const isSelected = selectedCountry.code === country.code;
-                    return (
-                      <button
-                        key={country.code}
-                        onClick={() => {
-                          setSelectedCountry(country);
-                          setGpsSuccessMessage(null);
-                          setGpsError(null);
-                        }}
-                        className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition-all relative cursor-pointer ${
-                          isSelected 
-                            ? "bg-blue-600/20 border-blue-500 text-white font-extrabold shadow-md" 
-                            : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
-                        }`}
-                        style={{ direction: isAr ? "rtl" : "ltr" }}
-                      >
-                        <span className="text-xl shrink-0">{country.flag}</span>
-                        <div className="truncate text-[11px] leading-tight flex-1">
-                          <p className="font-extrabold truncate">{isAr ? country.nameAr || country.name : country.name}</p>
-                          <p className="text-[9px] opacity-60 font-mono mt-0.5">{country.currency} ({country.currencySymbol})</p>
-                        </div>
-                        {isSelected && (
-                          <div className={`absolute top-3 ${isAr ? "left-3" : "right-3"} w-4.5 h-4.5 bg-blue-500 rounded-full flex items-center justify-center`}>
-                            <Check className="w-2.5 h-2.5 text-white stroke-[3.5px]" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
             </motion.div>
           )}

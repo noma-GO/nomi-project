@@ -21,6 +21,8 @@ interface AssistantViewProps {
   currentCountry: Country;
   homeCountry: Country;
   onNavigate: (screen: any) => void;
+  setMapNavigationPOI?: (poi: any) => void;
+  setMapFilterOverride?: (filter: string) => void;
 }
 
 const QUICK_PROMPTS = [
@@ -57,7 +59,9 @@ const QUICK_PROMPTS = [
 export default function AssistantView({ 
   currentCountry, 
   homeCountry, 
-  onNavigate 
+  onNavigate,
+  setMapNavigationPOI,
+  setMapFilterOverride
 }: AssistantViewProps) {
   const { t, language } = useLanguage();
   const isAr = language === "ar";
@@ -154,6 +158,130 @@ How can I help you today? Ask me anything or tap one of the quick suggestions be
     setMessages(prev => [...prev, userMsg]);
     setInputText("");
     setLoading(true);
+
+    // Dynamic map-assist parser to link the chatbot directly to active navigation
+    const cleanedText = messageText.toLowerCase().trim();
+    const isClosestSupermarket = cleanedText.includes("أقرب سوبرماركت") || 
+                                cleanedText.includes("أقرب سوبر ماركت") || 
+                                cleanedText.includes("أقرب بقالة") || 
+                                cleanedText.includes("nearest supermarket") || 
+                                cleanedText.includes("closest supermarket") || 
+                                cleanedText.includes("أقرب متجر");
+    
+    const isNavigationRequest = cleanedText.includes("خذني إلى") || 
+                                cleanedText.includes("خذني الى") || 
+                                cleanedText.includes("take me to") || 
+                                cleanedText.includes("ملاحة إلى") || 
+                                cleanedText.includes("ملاحة الى") || 
+                                cleanedText.includes("navigation to");
+
+    if (isClosestSupermarket || isNavigationRequest) {
+      await new Promise(r => setTimeout(r, 650));
+      
+      let targetPOI: POI | null = null;
+      let targetFilter = "landmarks";
+      let replyContent = "";
+
+      if (isClosestSupermarket) {
+        const stores = getCountryPOIs(currentCountry.code, "stores", isAr);
+        if (stores.length > 0) {
+          targetPOI = stores[0];
+          targetFilter = "stores";
+          replyContent = isAr 
+            ? `### 🛒 جاري التوجيه إلى أقرب سوبرماركت:
+**${targetPOI.name}** (${targetPOI.dist})
+
+المسافة: **${targetPOI.dist}**
+التقييم: **${targetPOI.rating} ⭐**
+أوقات العمل: **المفتوح الآن**
+
+يتم الآن فتح الخريطة وبدء الملاحة الفورية داخل التطبيق تلقائياً! 🛰️`
+            : `### 🛒 Routing to nearest supermarket:
+**${targetPOI.name}** (${targetPOI.dist})
+
+Distance: **${targetPOI.dist}**
+Rating: **${targetPOI.rating} ⭐**
+Status: **Open Now**
+
+Opening the live map and starting instant in-app navigation now! 🛰️`;
+        }
+      } else {
+        // Find target place name
+        let placeName = "";
+        if (cleanedText.includes("خذني إلى")) placeName = cleanedText.split("خذني إلى")[1]?.trim();
+        else if (cleanedText.includes("خذني الى")) placeName = cleanedText.split("خذني الى")[1]?.trim();
+        else if (cleanedText.includes("take me to")) placeName = cleanedText.split("take me to")[1]?.trim();
+        else if (cleanedText.includes("ملاحة إلى")) placeName = cleanedText.split("ملاحة إلى")[1]?.trim();
+        else if (cleanedText.includes("ملاحة الى")) placeName = cleanedText.split("ملاحة الى")[1]?.trim();
+        else if (cleanedText.includes("navigation to")) placeName = cleanedText.split("navigation to")[1]?.trim();
+
+        // Strip punctuation
+        placeName = placeName.replace(/[?.!]/g, "").trim();
+
+        // Search in all categories
+        const categories = ["landmarks", "stores", "restaurants", "hotels"];
+        for (const cat of categories) {
+          const pois = getCountryPOIs(currentCountry.code, cat, isAr);
+          const found = pois.find(p => p.name.toLowerCase().includes(placeName.toLowerCase()) || placeName.toLowerCase().includes(p.name.toLowerCase()));
+          if (found) {
+            targetPOI = found;
+            targetFilter = cat;
+            break;
+          }
+        }
+
+        // Fallback to first available tourist landmark if no exact match
+        if (!targetPOI) {
+          const landmarks = getCountryPOIs(currentCountry.code, "landmarks", isAr);
+          if (landmarks.length > 0) {
+            targetPOI = landmarks[0];
+            targetFilter = "landmarks";
+          }
+        }
+
+        if (targetPOI) {
+          replyContent = isAr
+            ? `### 🗺️ جاري الملاحة إلى: **${targetPOI.name}**
+الموقع: **معلم سياحي رئيسي**
+المسافة: **${targetPOI.dist}**
+التقييم: **${targetPOI.rating} ⭐**
+
+يتم الآن فتح الخريطة وتفعيل واجهة الملاحة الحية التفاعلية تلقائياً! 🚗💨`
+            : `### 🗺️ Routing to: **${targetPOI.name}**
+Location: **Primary Tourist landmark**
+Distance: **${targetPOI.dist}**
+Rating: **${targetPOI.rating} ⭐**
+
+Opening the live map and launching the turn-by-turn interactive navigation dashboard! 🚗💨`;
+        }
+      }
+
+      if (targetPOI) {
+        // Add assistant message
+        const assistantMsg: Message = {
+          id: "assistant-nav-" + Date.now(),
+          role: "assistant",
+          content: replyContent,
+          timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false }),
+          openMap: true,
+          mapFilter: targetFilter as any
+        };
+
+        setMessages(prev => [...prev, assistantMsg]);
+        setLoading(false);
+
+        // Save navigation parameters
+        setMapFilterOverride?.(targetFilter);
+        setMapNavigationPOI?.(targetPOI);
+
+        // Switch to explore map screen after a brief delay
+        setTimeout(() => {
+          onNavigate("explore");
+        }, 2200);
+
+        return; // Complete process early!
+      }
+    }
 
     try {
       const history = messages.map(m => ({
