@@ -10,6 +10,7 @@ import {
   linkWithCredential as fbLinkWithCredential, 
   EmailAuthProvider as fbEmailAuthProvider,
   GoogleAuthProvider as fbGoogleAuthProvider,
+  OAuthProvider as fbOAuthProvider,
   signInWithPopup as fbSignInWithPopup,
   linkWithPopup as fbLinkWithPopup
 } from "firebase/auth";
@@ -117,6 +118,35 @@ export async function signInWithGoogle(authObj: any) {
     }
   } catch (err) {
     console.error("[NOMI FIREBASE] signInWithGoogle failed:", err);
+    throw err;
+  }
+}
+
+export async function signInWithApple(authObj: any) {
+  if (!isFirebaseAvailable || !authObj) {
+    console.warn("[NOMI FIREBASE MOCK] signInWithApple: Firebase offline, using mock user");
+    return { user: { uid: "apple-user-mock", displayName: "Apple Traveler", email: "apple.traveler@apple.com" } };
+  }
+  try {
+    const provider = new fbOAuthProvider("apple.com");
+    
+    // Check if there is an anonymous user logged in currently, to link accounts
+    const currentUser = authObj.currentUser;
+    if (currentUser && currentUser.isAnonymous) {
+      try {
+        const result = await fbLinkWithPopup(currentUser, provider);
+        return result;
+      } catch (linkErr: any) {
+        if (linkErr.code === 'auth/credential-already-in-use') {
+          return await fbSignInWithPopup(authObj, provider);
+        }
+        throw linkErr;
+      }
+    } else {
+      return await fbSignInWithPopup(authObj, provider);
+    }
+  } catch (err) {
+    console.error("[NOMI FIREBASE] signInWithApple failed:", err);
     throw err;
   }
 }

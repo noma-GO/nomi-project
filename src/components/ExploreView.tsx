@@ -3,11 +3,12 @@ import {
   Compass, Store, Landmark, Map, MapPin, ShieldAlert, Star, Clock, 
   Sparkles, CheckCircle2, Ticket, ChevronRight, Navigation, Info,
   Globe, Search, Plane, Hotel, Utensils, CloudSun, Languages, 
-  PhoneCall, ShieldCheck, RefreshCw, Smile
+  PhoneCall, ShieldCheck, RefreshCw, Smile, CreditCard, Activity, Train, Landmark as LandmarkIcon, Heart, Shield
 } from "lucide-react";
 import { Country, CountryGuide } from "../types";
 import { SUPERMARKETS, ATTRACTIONS } from "../data";
 import { useLanguage } from "../lib/i18n";
+import { getCountryPOIs, POI } from "../lib/poiManager";
 
 interface ExploreViewProps {
   currentCountry: Country;
@@ -37,6 +38,8 @@ export default function ExploreView({
   const [activeSupermarket, setActiveSupermarket] = useState<any | null>(null);
   const [activeAttraction, setActiveAttraction] = useState<any | null>(null);
   const [showMap, setShowMap] = useState(true);
+  const [mapCategory, setMapCategory] = useState<string>("landmarks");
+  const [activePOI, setActivePOI] = useState<POI | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -417,67 +420,201 @@ export default function ExploreView({
             </div>
           )}
 
-          {showMap && (
-            <div className="aspect-video bg-slate-950 rounded-2xl relative flex items-center justify-center overflow-hidden border border-slate-800 shadow-inner">
-              <div className="absolute inset-0 opacity-10 pointer-events-none">
-                <div className="absolute top-1/4 left-0 w-full h-0.5 bg-blue-500"></div>
-                <div className="absolute top-3/4 left-0 w-full h-0.5 bg-blue-500"></div>
-                <div className="absolute top-0 left-1/3 w-0.5 h-full bg-blue-500"></div>
-                <div className="absolute top-0 left-2/3 w-0.5 h-full bg-blue-500"></div>
-                <div className="absolute top-1/3 left-1/4 w-32 h-32 rounded-full border border-blue-500 animate-pulse"></div>
-              </div>
+          {showMap && (() => {
+            const MAP_CATEGORIES = [
+              { id: "landmarks", labelAr: "أماكن سياحية", labelEn: "Tourist Spots", icon: <Landmark className="w-3.5 h-3.5" />, color: "bg-amber-500" },
+              { id: "stores", labelAr: "سوبرماركت", labelEn: "Supermarkets", icon: <Store className="w-3.5 h-3.5" />, color: "bg-emerald-600" },
+              { id: "restaurants", labelAr: "مطاعم", labelEn: "Restaurants", icon: <Utensils className="w-3.5 h-3.5" />, color: "bg-orange-500" },
+              { id: "hospitals", labelAr: "مستشفيات", labelEn: "Hospitals", icon: <Activity className="w-3.5 h-3.5" />, color: "bg-rose-500" },
+              { id: "transit", labelAr: "مواصلات", labelEn: "Transit Hubs", icon: <Train className="w-3.5 h-3.5" />, color: "bg-blue-500" },
+              { id: "atms", labelAr: "صراف آلي ATM", labelEn: "ATMs", icon: <CreditCard className="w-3.5 h-3.5" />, color: "bg-teal-500" },
+              { id: "malls", labelAr: "مولات", labelEn: "Shopping Malls", icon: <Compass className="w-3.5 h-3.5" />, color: "bg-purple-500" },
+              { id: "hotels", labelAr: "فنادق", labelEn: "Hotels", icon: <Hotel className="w-3.5 h-3.5" />, color: "bg-indigo-500" }
+            ];
 
-              <div className="absolute w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 animate-ping"></div>
+            const activePOIs = getCountryPOIs(currentCountry.code, mapCategory, isAr);
+            const selectedCat = MAP_CATEGORIES.find(c => c.id === mapCategory) || MAP_CATEGORIES[0];
 
-              <div className="relative z-10 bg-blue-600 p-2 rounded-full text-white shadow-lg animate-bounce shadow-blue-950">
-                <Navigation className="w-4 h-4 transform rotate-45" />
-              </div>
+            return (
+              <div className="space-y-3" id="professional-map-container">
+                {/* Horizontal scrollable Category Filters bar */}
+                <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 pt-0.5">
+                  {MAP_CATEGORIES.map((cat) => {
+                    const isSelected = mapCategory === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => {
+                          setMapCategory(cat.id);
+                          setActivePOI(null);
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold transition-all shrink-0 border ${
+                          isSelected 
+                            ? `${cat.color} border-transparent text-white shadow-md shadow-slate-100 scale-95` 
+                            : "bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-600"
+                        }`}
+                      >
+                        {cat.icon}
+                        <span>{isAr ? cat.labelAr : cat.labelEn}</span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-              {/* Mapped Pins */}
-              {exploreTab === "stores" 
-                ? countrySupermarkets.map((sm: any, idx: number) => (
-                    <button
-                      key={sm.id || idx}
-                      style={{ 
-                        top: `${20 + ((idx % 3) * 22)}%`, 
-                        left: `${15 + ((idx % 2) * 55)}%` 
-                      }}
-                      className="absolute z-10 flex flex-col items-center scale-90 hover:scale-100 transition-all cursor-pointer"
-                      onClick={() => setActiveSupermarket(sm)}
-                    >
-                      <div className={`p-1.5 rounded-full text-white shadow ${
-                        activeSupermarket?.id === sm.id ? "bg-blue-600 animate-pulse" : "bg-emerald-600"
-                      }`}>
-                        <Store className="w-3 h-3" />
+                {/* Map Vector Canvas */}
+                <div className="aspect-[16/10] sm:aspect-video bg-[#0f172a] rounded-2xl relative overflow-hidden border border-slate-800 shadow-inner flex items-center justify-center">
+                  {/* Styled Grid Overlay */}
+                  <div className="absolute inset-0 opacity-15 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle, #3b82f6 1px, transparent 1px)", backgroundSize: "20px 20px" }}></div>
+                  <div className="absolute inset-0 opacity-10 pointer-events-none">
+                    <div className="absolute top-1/2 left-0 w-full h-0.5 bg-blue-500"></div>
+                    <div className="absolute left-1/2 top-0 h-full w-0.5 bg-blue-500"></div>
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[60%] aspect-square rounded-full border border-blue-500"></div>
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[35%] aspect-square rounded-full border border-blue-400"></div>
+                  </div>
+
+                  {/* Top-Right Compass / Info badge */}
+                  <div className="absolute top-2 right-2 z-10 bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg px-2 py-1 text-[8px] font-bold text-blue-400 font-mono flex items-center gap-1">
+                    <Navigation className="w-2.5 h-2.5 animate-spin" style={{ animationDuration: '6s' }} />
+                    <span>N 35.6762° E 139.6503°</span>
+                  </div>
+
+                  {/* Top-Left Active category indicator */}
+                  <div className="absolute top-2 left-2 z-10 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-lg px-2.5 py-1 text-[9px] font-bold text-slate-200 flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${selectedCat.color}`}></span>
+                    <span>{isAr ? `تصفية: ${selectedCat.labelAr}` : `Filter: ${selectedCat.labelEn}`}</span>
+                  </div>
+
+                  {/* User Current Location Pin with pulsing radar glow */}
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center">
+                    <div className="absolute w-12 h-12 rounded-full bg-blue-500/20 border border-blue-400/40 animate-ping"></div>
+                    <div className="relative bg-blue-600 border-2 border-white p-1.5 rounded-full text-white shadow-lg shadow-blue-900/50">
+                      <Navigation className="w-3.5 h-3.5 transform rotate-45" />
+                    </div>
+                    <span className="text-[7px] font-extrabold bg-blue-600 text-white px-1 py-0.5 rounded shadow mt-1 whitespace-nowrap uppercase tracking-wider">
+                      {isAr ? "موقعك الحالي" : "You"}
+                    </span>
+                  </div>
+
+                  {/* Dynamic Dashed Routing Polyline when activePOI is selected */}
+                  {activePOI && (
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+                      <line 
+                        x1="50%" 
+                        y1="50%" 
+                        x2={`${activePOI.latPercent}%`} 
+                        y2={`${activePOI.lngPercent}%`} 
+                        stroke="#3b82f6" 
+                        strokeWidth="2.5" 
+                        strokeDasharray="6,4" 
+                        className="animate-[dash_10s_linear_infinite]"
+                      />
+                    </svg>
+                  )}
+
+                  {/* Mapped POI Pin Buttons */}
+                  {activePOIs.map((poi: POI, idx: number) => {
+                    const isSelected = activePOI?.id === poi.id;
+                    return (
+                      <button
+                        key={poi.id}
+                        style={{ 
+                          top: `${poi.latPercent}%`, 
+                          left: `${poi.lngPercent}%` 
+                        }}
+                        className="absolute z-10 flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 scale-90 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                        onClick={() => {
+                          setActivePOI(poi);
+                        }}
+                      >
+                        <div className={`p-1.5 rounded-full text-white shadow-md border border-white/20 transition-all ${
+                          isSelected ? "bg-blue-600 scale-110 animate-pulse shadow-blue-500/50 ring-4 ring-blue-500/20" : selectedCat.color
+                        }`}>
+                          {selectedCat.icon}
+                        </div>
+                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded mt-1 shadow-sm whitespace-nowrap border transition-all ${
+                          isSelected 
+                            ? "bg-blue-600 border-blue-500 text-white" 
+                            : "bg-slate-900 border-slate-800 text-slate-100"
+                        }`}>
+                          {poi.name} ({poi.dist})
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* POI Info Drawer Sheet */}
+                {activePOI && (
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5 animate-fade-in relative shadow-sm">
+                    {/* Top title bar with close */}
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-0.5">
+                        <span className={`inline-block text-[8px] font-black text-white px-2 py-0.5 rounded-full ${selectedCat.color} uppercase tracking-wider`}>
+                          {isAr ? selectedCat.labelAr : selectedCat.labelEn}
+                        </span>
+                        <h4 className="text-xs font-black text-slate-800">{activePOI.name}</h4>
                       </div>
-                      <span className="text-[8px] font-bold bg-white border border-slate-200 text-slate-800 px-1 py-0.2 rounded mt-1 shadow whitespace-nowrap font-mono">
-                        {sm.name} ({(idx + 1) * 0.4}{isAr ? " كم" : "km"})
-                      </span>
-                    </button>
-                  ))
-                : countryAttractions.map((att: any, idx: number) => (
-                    <button
-                      key={att.id || idx}
-                      style={{ 
-                        top: `${15 + ((idx % 3) * 25)}%`, 
-                        left: `${20 + ((idx % 2) * 50)}%` 
-                      }}
-                      className="absolute z-10 flex flex-col items-center scale-90 hover:scale-100 transition-all cursor-pointer"
-                      onClick={() => setActiveAttraction(att)}
-                    >
-                      <div className={`p-1.5 rounded-full text-white shadow ${
-                        activeAttraction?.id === att.id ? "bg-blue-600 animate-pulse" : "bg-amber-500"
-                      }`}>
-                        <Landmark className="w-3 h-3" />
+                      <button 
+                        onClick={() => setActivePOI(null)}
+                        className="p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        <span className="text-[14px] font-bold leading-none block">×</span>
+                      </button>
+                    </div>
+
+                    {/* Quick Specs */}
+                    <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600">
+                      <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-100">
+                        <Navigation className="w-3 h-3 text-blue-500 shrink-0" />
+                        <div>
+                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tight">{isAr ? "المسافة" : "DISTANCE"}</p>
+                          <p className="font-extrabold text-slate-800">{activePOI.dist}</p>
+                        </div>
                       </div>
-                      <span className="text-[8px] font-bold bg-white border border-slate-200 text-slate-800 px-1 py-0.2 rounded mt-1 shadow whitespace-nowrap font-mono">
-                        {att.name} ({(idx + 1) * 0.6}{isAr ? " كم" : "km"})
-                      </span>
-                    </button>
-                  ))
-              }
-            </div>
-          )}
+
+                      <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-100">
+                        <Star className="w-3 h-3 text-amber-500 fill-amber-500 shrink-0" />
+                        <div>
+                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tight">{isAr ? "التقييم" : "RATING"}</p>
+                          <p className="font-extrabold text-slate-800">{activePOI.rating} / 5.0</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-xl border border-slate-100 text-[10px] leading-relaxed text-slate-600">
+                      <p className="font-bold text-slate-800 mb-0.5">{isAr ? "حول المكان:" : "About:"}</p>
+                      <p className="text-slate-600 text-[9.5px] font-medium leading-normal">{activePOI.desc}</p>
+                    </div>
+
+                    {/* Safety alert */}
+                    <div className="bg-blue-50/50 border border-blue-100/50 p-2.5 rounded-xl flex items-start gap-2">
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600 mt-0.5 shrink-0" />
+                      <div className="text-[9px] text-blue-900 leading-normal">
+                        <p className="font-bold">{isAr ? "فحص الأمان والخصوصية" : "Safety & Local Audit"}</p>
+                        <p className="text-blue-800/85 font-medium">{activePOI.safety}</p>
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => {
+                          alert(isAr 
+                            ? `تم فتح ملاحة نظام تحديد المواقع بنجاح! الاتجاهات إلى "${activePOI.name}" قيد التحديث في الخلفية.` 
+                            : `GPS Routing started successfully! Live navigation to "${activePOI.name}" is now updating in background.`
+                          );
+                        }}
+                        className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-[10.5px] rounded-xl transition-all shadow-md hover:shadow-blue-200 active:scale-95 flex items-center justify-center gap-1"
+                      >
+                        <Navigation className="w-3 h-3 transform rotate-45 text-white" />
+                        <span>{isAr ? "عرض الاتجاهات الحية" : "Get Directions"}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

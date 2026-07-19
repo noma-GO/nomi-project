@@ -297,17 +297,30 @@ Your behavior guidelines:
 1. Always converse in the user's language: ${userLanguage === "ar" ? "Arabic (العربية)" : "English"}. Speak clearly, politely, and helpfully.
 2. Provide concrete recommendations, local market advice, and price comparison tips.
 3. If they ask about product prices or alternatives, suggest cheaper options in local supermarkets (like 7-Eleven, Lawson, Aeon in Japan; Coop, Conad in Italy; Carrefour, Monoprix in France; Big C, Lotus's in Thailand) rather than tourist gift shops.
-4. Keep your replies concise, scannable, and formatted beautifully using standard Markdown. Avoid long blocks of text. Use bullet points and bold headers.`;
+4. Keep your replies concise, scannable, and formatted beautifully using standard Markdown. Avoid long blocks of text. Use bullet points and bold headers.
+
+YOU MUST RETURN A STRICT JSON OBJECT WITH THE FOLLOWING SCHEMA:
+{
+  "reply": "your conversational Markdown response",
+  "openMap": true or false (set to true if the user is asking to find or locate restaurants, supermarkets/stores, attractions/landmarks, hospitals, transit, ATMs/cash, malls, or hotels in their destination),
+  "mapFilter": "landmarks" | "stores" | "restaurants" | "hospitals" | "transit" | "atms" | "malls" | "hotels" | null (select the string category that matches the user's focus)
+}`;
 
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents,
       config: {
         systemInstruction,
+        responseMimeType: "application/json",
       },
     });
 
-    res.json({ reply: response.text || "" });
+    const parsedData = JSON.parse(response.text || "{}");
+    res.json({
+      reply: parsedData.reply || "",
+      openMap: !!parsedData.openMap,
+      mapFilter: parsedData.mapFilter || null
+    });
 
   } catch (error: any) {
     console.error("Error in chat assistant:", error);

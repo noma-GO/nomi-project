@@ -1,17 +1,20 @@
 import React, { useState, useRef, useEffect } from "react";
 import { 
   Sparkles, Send, Trash2, ArrowLeft, User, Compass, Info, DollarSign, Train, Shield, Lightbulb,
-  Paperclip, Mic, MicOff, Loader2
+  Paperclip, Mic, MicOff, Loader2, Store, Landmark, Utensils, Activity, CreditCard, Hotel, Map, Star, ShieldCheck, Navigation
 } from "lucide-react";
 import { Country } from "../types";
 import { useLanguage } from "../lib/i18n";
 import ReactMarkdown from "react-markdown";
+import { getCountryPOIs, POI } from "../lib/poiManager";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  openMap?: boolean;
+  mapFilter?: "landmarks" | "stores" | "restaurants" | "hospitals" | "transit" | "atms" | "malls" | "hotels" | null;
 }
 
 interface AssistantViewProps {
@@ -65,6 +68,7 @@ export default function AssistantView({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [selectedChatPoi, setSelectedChatPoi] = useState<{ [msgId: string]: POI | null }>({});
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -180,7 +184,9 @@ How can I help you today? Ask me anything or tap one of the quick suggestions be
         id: "reply-" + Date.now(),
         role: "assistant",
         content: data.reply || (isAr ? "عذرًا، لم أتمكن من معالجة الطلب." : "Apologies, I couldn't process that response."),
-        timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
+        timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false }),
+        openMap: data.openMap,
+        mapFilter: data.mapFilter
       };
 
       setMessages(prev => [...prev, assistantMsg]);
@@ -323,6 +329,144 @@ As your traveler specialist in **${currentCountry.name}**, I advise checking out
                     <ReactMarkdown>{m.content}</ReactMarkdown>
                   </div>
                 </div>
+
+                {!isUser && m.openMap && (() => {
+                  const filter = m.mapFilter || "landmarks";
+                  const activePOIs = getCountryPOIs(currentCountry.code, filter, isAr);
+                  const activePOI = selectedChatPoi[m.id] || null;
+
+                  // Define icon matching for inline display
+                  let iconBg = "bg-amber-500";
+                  let iconEl = <Landmark className="w-2.5 h-2.5 text-white" />;
+                  let labelText = isAr ? "معالم سياحية" : "Tourist Spots";
+
+                  if (filter === "stores") {
+                    iconBg = "bg-emerald-600";
+                    iconEl = <Store className="w-2.5 h-2.5 text-white" />;
+                    labelText = isAr ? "سوبرماركت" : "Supermarkets";
+                  } else if (filter === "restaurants") {
+                    iconBg = "bg-orange-500";
+                    iconEl = <Utensils className="w-2.5 h-2.5 text-white" />;
+                    labelText = isAr ? "مطاعم" : "Restaurants";
+                  } else if (filter === "hospitals") {
+                    iconBg = "bg-rose-500";
+                    iconEl = <Activity className="w-2.5 h-2.5 text-white" />;
+                    labelText = isAr ? "مستشفيات" : "Hospitals";
+                  } else if (filter === "transit") {
+                    iconBg = "bg-blue-500";
+                    iconEl = <Train className="w-2.5 h-2.5 text-white" />;
+                    labelText = isAr ? "مواصلات" : "Transit";
+                  } else if (filter === "atms") {
+                    iconBg = "bg-teal-500";
+                    iconEl = <CreditCard className="w-2.5 h-2.5 text-white" />;
+                    labelText = isAr ? "صراف آلي ATM" : "ATMs";
+                  } else if (filter === "malls") {
+                    iconBg = "bg-purple-500";
+                    iconEl = <Compass className="w-2.5 h-2.5 text-white" />;
+                    labelText = isAr ? "مولات تجارية" : "Malls";
+                  } else if (filter === "hotels") {
+                    iconBg = "bg-indigo-500";
+                    iconEl = <Hotel className="w-2.5 h-2.5 text-white" />;
+                    labelText = isAr ? "فنادق" : "Hotels";
+                  }
+
+                  return (
+                    <div className="mt-2 border border-slate-200/80 rounded-2xl overflow-hidden bg-white shadow-sm w-full max-w-[340px] animate-fade-in text-left">
+                      {/* Mini Map Header */}
+                      <div className="bg-slate-50 border-b border-slate-100 px-3 py-2 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <div className={`p-1 rounded-lg ${iconBg} text-white`}>
+                            {iconEl}
+                          </div>
+                          <span className="text-[10px] font-black text-slate-700">{labelText}</span>
+                        </div>
+                        <button 
+                          onClick={() => onNavigate("explore")}
+                          className="text-[9px] font-bold text-blue-600 hover:underline flex items-center gap-0.5"
+                        >
+                          <Map className="w-2.5 h-2.5" />
+                          <span>{isAr ? "الخريطة الكاملة" : "Full Map"}</span>
+                        </button>
+                      </div>
+
+                      {/* Mini Map Canvas */}
+                      <div className="h-[140px] bg-slate-900 relative overflow-hidden flex items-center justify-center">
+                        {/* Radar grid style */}
+                        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle, #3b82f6 1px, transparent 1px)", backgroundSize: "15px 15px" }}></div>
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full border border-blue-500/20 animate-pulse pointer-events-none"></div>
+
+                        {/* User Pin */}
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center">
+                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500 border border-white shadow-md"></div>
+                          <div className="absolute w-6 h-6 rounded-full bg-blue-500/20 border border-blue-500/30 animate-ping pointer-events-none"></div>
+                        </div>
+
+                        {/* Routing Polyline */}
+                        {activePOI && (
+                          <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                            <line 
+                              x1="50%" 
+                              y1="50%" 
+                              x2={`${activePOI.latPercent}%`} 
+                              y2={`${activePOI.lngPercent}%`} 
+                              stroke="#3b82f6" 
+                              strokeWidth="1.5" 
+                              strokeDasharray="4,2" 
+                              className="animate-[dash_10s_linear_infinite]"
+                            />
+                          </svg>
+                        )}
+
+                        {/* Mapped Pins */}
+                        {activePOIs.map((poi: POI) => {
+                          const isSelected = activePOI?.id === poi.id;
+                          return (
+                            <button
+                              key={poi.id}
+                              style={{ top: `${poi.latPercent}%`, left: `${poi.lngPercent}%` }}
+                              onClick={() => {
+                                setSelectedChatPoi(prev => ({
+                                  ...prev,
+                                  [m.id]: isSelected ? null : poi
+                                }));
+                              }}
+                              className="absolute z-10 transform -translate-x-1/2 -translate-y-1/2 scale-90 hover:scale-105 active:scale-95 transition-all"
+                            >
+                              <div className={`p-1 rounded-full text-white border border-white/20 shadow-md ${
+                                isSelected ? "bg-blue-600 scale-110 animate-pulse" : iconBg
+                              }`}>
+                                {iconEl}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Mini Map Detail Box */}
+                      <div className="p-2.5 border-t border-slate-50 text-[10px] text-slate-600 bg-white min-h-[50px] flex flex-col justify-center">
+                        {activePOI ? (
+                          <div className="space-y-1 animate-fade-in">
+                            <div className="flex items-center justify-between">
+                              <span className="font-extrabold text-slate-800 text-[10.5px] leading-tight">{activePOI.name}</span>
+                              <span className="text-[8.5px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full shrink-0">{activePOI.dist}</span>
+                            </div>
+                            <p className="text-[9.5px] font-medium leading-normal text-slate-500">{activePOI.desc}</p>
+                            <div className="flex items-center gap-1 text-[8.5px] text-emerald-600 font-bold bg-emerald-50/50 p-1 rounded border border-emerald-100/30">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span>{activePOI.safety}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center text-slate-400 py-1 font-bold text-[9px] flex items-center justify-center gap-1">
+                            <Navigation className="w-3 h-3 text-slate-400 animate-bounce" />
+                            <span>{isAr ? "انقر على أي دبوس في الخريطة لرؤية التفاصيل" : "Click on any pin on map for info"}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <span className={`text-[8px] text-slate-400 font-bold block px-1 ${isUser ? "text-right" : "text-left"}`}>
                   {m.timestamp}
                 </span>

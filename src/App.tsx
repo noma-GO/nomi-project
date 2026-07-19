@@ -28,7 +28,7 @@ import {
   query, orderBy, deleteDoc, updateDoc, increment, getDoc,
   updateProfile, linkWithCredential, EmailAuthProvider,
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
-  signInWithGoogle
+  signInWithGoogle, signInWithApple
 } from "./lib/firebase";
 import { User as FirebaseUser } from "firebase/auth";
 import { useLanguage, Language } from "./lib/i18n";
@@ -388,6 +388,16 @@ export default function App() {
     }
   };
 
+  const handleSignInApple = async () => {
+    try {
+      await signInWithApple(auth);
+      return { success: true };
+    } catch (err: any) {
+      console.error("Apple sign-in failed:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
   const handleSignOutUser = async () => {
     try {
       await signOut(auth);
@@ -558,9 +568,8 @@ export default function App() {
             loadingProfile={loadingProfile}
             onToggleAttraction={handleToggleAttractionVisit}
             onUpdateName={handleUpdateProfileName}
-            onRegister={handleRegisterEmail}
-            onSignIn={handleSignInEmail}
             onSignInGoogle={handleSignInGoogle}
+            onSignInApple={handleSignInApple}
             onSignOut={handleSignOutUser}
           />
         )}
@@ -669,6 +678,8 @@ export default function App() {
         <OnboardingView 
           homeCountryOptions={homeCountryOptions}
           onComplete={handleOnboardingComplete}
+          onSignInGoogle={handleSignInGoogle}
+          onSignInApple={handleSignInApple}
         />
       )}
 

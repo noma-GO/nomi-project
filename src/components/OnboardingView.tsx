@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  Globe, ArrowRight, ArrowLeft, Check, Sparkles, Navigation, Coins, MapPin, Loader2, Compass, ShieldCheck
+  Globe, ArrowRight, ArrowLeft, Check, Sparkles, Navigation, Coins, MapPin, Loader2, Compass, ShieldCheck, CheckCircle
 } from "lucide-react";
 import { Country } from "../types";
 import { useLanguage, Language } from "../lib/i18n";
@@ -10,11 +10,15 @@ import { CountryManager } from "../lib/countryManager";
 interface OnboardingViewProps {
   homeCountryOptions: Country[];
   onComplete: (selectedCountry: Country, selectedLanguage: Language) => void;
+  onSignInGoogle: () => Promise<{ success: boolean; error?: string }>;
+  onSignInApple: () => Promise<{ success: boolean; error?: string }>;
 }
 
 export default function OnboardingView({
   homeCountryOptions,
-  onComplete
+  onComplete,
+  onSignInGoogle,
+  onSignInApple
 }: OnboardingViewProps) {
   const { t, language, setLanguage } = useLanguage();
   const isAr = language === "ar";
@@ -28,6 +32,25 @@ export default function OnboardingView({
   const [gpsLoading, setGpsLoading] = useState<boolean>(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [gpsSuccessMessage, setGpsSuccessMessage] = useState<string | null>(null);
+
+  // Auth states
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccess, setAuthSuccess] = useState<boolean>(false);
+
+  // Detect Platform
+  const [platform, setPlatform] = useState<"android" | "ios" | "web">("web");
+
+  useEffect(() => {
+    const userAgent = navigator.userAgent.toLowerCase();
+    if (userAgent.includes("android")) {
+      setPlatform("android");
+    } else if (userAgent.includes("iphone") || userAgent.includes("ipad") || userAgent.includes("ipod")) {
+      setPlatform("ios");
+    } else {
+      setPlatform("web");
+    }
+  }, []);
 
   const handleLanguageSelect = async (lang: Language) => {
     await setLanguage(lang);
@@ -93,7 +116,7 @@ export default function OnboardingView({
         }
       },
       (error) => {
-        console.warn("Geolocation permission/error:", error);
+        console.warn("Geolocation error:", error);
         setGpsLoading(false);
         if (error.code === error.PERMISSION_DENIED) {
           setGpsError(isAr ? "تم رفض إذن الوصول للموقع. يرجى اختيار الدولة يدوياً أدناه." : "Location permission denied. Please select your country manually below.");
@@ -112,31 +135,60 @@ export default function OnboardingView({
     }
   }, [step]);
 
+  // Handle Social Sign-In (completely passwordless)
+  const handleSocialSignIn = async (provider: "google" | "apple") => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      let res;
+      if (provider === "google") {
+        res = await onSignInGoogle();
+      } else {
+        res = await onSignInApple();
+      }
+
+      if (res.success) {
+        setAuthSuccess(true);
+        setTimeout(() => {
+          handleNextStep();
+        }, 1200);
+      } else {
+        setAuthError(res.error || (isAr ? "فشل تسجيل الدخول." : "Authentication failed."));
+      }
+    } catch (err: any) {
+      setAuthError(err.message || (isAr ? "حدث خطأ أثناء الاتصال." : "Connection error during auth."));
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   return (
     <div 
-      className="absolute inset-0 bg-slate-950 text-white flex flex-col z-50 overflow-y-auto no-scrollbar justify-between p-5 pb-8"
+      className="absolute inset-0 bg-slate-950 text-white flex flex-col z-50 overflow-y-auto no-scrollbar justify-between p-6 pb-10"
       id="onboarding-viewport-container"
     >
       {/* Dynamic Background Glows */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-900/30 via-slate-950 to-slate-950 pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-900/45 via-slate-950 to-slate-950 pointer-events-none" />
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] [background-size:24px_24px]" />
 
       {/* Top Header Navigation */}
-      <div className="relative z-10 flex justify-between items-center w-full max-w-md mx-auto pt-4">
+      <div className="relative z-10 flex justify-between items-center w-full max-w-md mx-auto pt-2">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-sans font-black text-white text-base shadow-lg shadow-blue-600/20">
+          <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-sans font-black text-white text-lg shadow-lg shadow-blue-600/30">
             N
           </div>
-          <span className="text-xs font-black tracking-wider uppercase bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Nomi Travel</span>
+          <span className="text-sm font-extrabold tracking-wider uppercase bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Nomi</span>
         </div>
-        <div className="text-[10px] bg-slate-900/80 border border-slate-800 text-slate-400 px-3 py-1 rounded-full font-black uppercase tracking-wider">
+        <div className="text-[10px] bg-white/10 border border-white/5 text-slate-300 px-3.5 py-1.5 rounded-full font-bold uppercase tracking-wider backdrop-blur-md">
           {isAr ? "المعالج الذكي" : "Smart Onboarding"}
         </div>
       </div>
 
       {/* Slideable Content Area */}
-      <div className="relative z-10 flex-1 flex flex-col justify-center my-6 max-w-md mx-auto w-full">
+      <div className="relative z-10 flex-1 flex flex-col justify-center my-8 max-w-md mx-auto w-full">
         <AnimatePresence mode="wait">
+          
+          {/* STEP 1: Welcome & Language selection */}
           {step === 1 && (
             <motion.div
               key="step1"
@@ -144,11 +196,11 @@ export default function OnboardingView({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: -12 }}
               transition={{ duration: 0.35, ease: "easeOut" }}
-              className="space-y-6"
+              className="space-y-7"
             >
-              <div className="text-center space-y-2">
-                <div className="inline-flex p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-3xl mb-1 shadow-inner shadow-blue-500/5">
-                  <Globe className="w-8 h-8 animate-pulse" />
+              <div className="text-center space-y-3">
+                <div className="inline-flex p-3.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-3xl mb-1 shadow-inner shadow-blue-500/5">
+                  <Globe className="w-9 h-9 animate-pulse text-blue-400" />
                 </div>
                 <h3 className="text-2xl font-black text-white tracking-tight leading-none">
                   {isAr ? "مرحباً بك في نوُمي" : "Welcome to Nomi"}
@@ -161,12 +213,13 @@ export default function OnboardingView({
               </div>
 
               {/* Language Selector Box */}
-              <div className="bg-slate-900/90 border border-slate-850 backdrop-blur-xl rounded-3xl p-5 space-y-4 shadow-xl">
+              <div className="bg-slate-900/90 border border-slate-800/80 backdrop-blur-2xl rounded-3xl p-5 space-y-4 shadow-2xl shadow-black/40">
                 <div className="text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400">
-                    {isAr ? "اختر لغة الواجهة" : "INTERFACE LANGUAGE"}
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-blue-500" />
+                    <span>{isAr ? "اختر لغة الواجهة" : "INTERFACE LANGUAGE"}</span>
                   </h4>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <p className="text-[11px] text-slate-500 mt-1">
                     {isAr ? "سيتم تطبيق لغة العرض ومحتويات السفر الفورية" : "Change the visual interface and travel contents language"}
                   </p>
                 </div>
@@ -200,6 +253,7 @@ export default function OnboardingView({
             </motion.div>
           )}
 
+          {/* STEP 2: GPS Detection */}
           {step === 2 && (
             <motion.div
               key="step2"
@@ -207,11 +261,11 @@ export default function OnboardingView({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: -12 }}
               transition={{ duration: 0.35, ease: "easeOut" }}
-              className="space-y-5"
+              className="space-y-6"
             >
-              <div className="text-center space-y-2">
-                <div className="inline-flex p-3 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-3xl mb-1 shadow-inner shadow-indigo-500/5">
-                  <MapPin className="w-8 h-8" />
+              <div className="text-center space-y-3">
+                <div className="inline-flex p-3.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-3xl mb-1 shadow-inner shadow-indigo-500/5">
+                  <MapPin className="w-9 h-9 text-indigo-400 animate-bounce" />
                 </div>
                 <h3 className="text-2xl font-black text-white tracking-tight leading-none">
                   {isAr ? "تحديد بلدك الأصلي" : "Your Residence Country"}
@@ -224,17 +278,17 @@ export default function OnboardingView({
               </div>
 
               {/* Automatic Location Panel */}
-              <div className="bg-slate-900/90 border border-slate-850 backdrop-blur-xl rounded-3xl p-4 space-y-3.5 shadow-xl">
+              <div className="bg-slate-900/90 border border-slate-800/80 backdrop-blur-2xl rounded-3xl p-5 space-y-4 shadow-2xl shadow-black/40">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-indigo-600/10 text-indigo-400 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-indigo-600/20 text-indigo-400 rounded-xl">
                       <Navigation className={`w-4 h-4 ${gpsLoading ? "animate-spin" : ""}`} />
                     </div>
                     <div className="text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
-                      <p className="text-[9px] text-slate-500 font-extrabold uppercase tracking-wider">
+                      <p className="text-[9px] text-slate-500 font-extrabold uppercase tracking-widest">
                         {isAr ? "الموقع الجغرافي التلقائي" : "AUTOMATIC LOCATION"}
                       </p>
-                      <p className="text-xs font-extrabold text-slate-200">
+                      <p className="text-xs font-extrabold text-slate-200 mt-0.5">
                         {gpsLoading 
                           ? (isAr ? "جاري فحص الإحداثيات..." : "Scanning GPS coordinates...") 
                           : (isAr ? "تحديد الدولة تلقائياً" : "Auto-detect country")}
@@ -245,7 +299,7 @@ export default function OnboardingView({
                   {!gpsLoading && (
                     <button
                       onClick={handleDetectLocation}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black rounded-lg transition-all active:scale-95 cursor-pointer shadow-md shadow-indigo-600/10"
+                      className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black rounded-xl transition-all active:scale-95 cursor-pointer shadow-md shadow-indigo-600/20"
                     >
                       {isAr ? "إعادة الفحص" : "Re-Scan GPS"}
                     </button>
@@ -253,31 +307,31 @@ export default function OnboardingView({
                 </div>
 
                 {gpsLoading && (
-                  <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-950/40 p-2.5 rounded-xl border border-slate-850/30">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                  <div className="flex items-center gap-2.5 text-xs text-slate-400 bg-slate-950/60 p-3 rounded-2xl border border-slate-850">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
                     <span>{isAr ? "يرجى الموافقة على طلب إذن الموقع..." : "Please grant location access when prompted..."}</span>
                   </div>
                 )}
 
                 {gpsError && (
-                  <div className="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl text-[10px] font-semibold border border-rose-500/20 text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
+                  <div className="p-3 bg-rose-500/10 text-rose-400 rounded-2xl text-[10px] font-bold border border-rose-500/20 text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
                     ⚠️ {gpsError}
                   </div>
                 )}
 
                 {gpsSuccessMessage && (
-                  <div className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-xl text-[10px] font-bold border border-emerald-500/20 text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
+                  <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-2xl text-[10px] font-bold border border-emerald-500/20 text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
                     ✨ {gpsSuccessMessage}
                   </div>
                 )}
               </div>
 
               {/* Manual Selection Grid */}
-              <div className="space-y-2">
-                <p className="text-[9px] text-slate-500 font-extrabold uppercase tracking-wider px-1 text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
+              <div className="space-y-3">
+                <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest px-1 text-left" style={{ direction: isAr ? "rtl" : "ltr" }}>
                   {isAr ? "أو اختر يدوياً من القائمة المتاحة:" : "OR SELECT MANUALLY:"}
                 </p>
-                <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto no-scrollbar pr-1">
+                <div className="grid grid-cols-2 gap-2 max-h-[150px] overflow-y-auto no-scrollbar pr-1">
                   {homeCountryOptions.map((country) => {
                     const isSelected = selectedCountry.code === country.code;
                     return (
@@ -288,21 +342,21 @@ export default function OnboardingView({
                           setGpsSuccessMessage(null);
                           setGpsError(null);
                         }}
-                        className={`p-2.5 rounded-2xl border text-left flex items-center gap-2 transition-all relative cursor-pointer ${
+                        className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition-all relative cursor-pointer ${
                           isSelected 
-                            ? "bg-blue-600/25 border-blue-500 text-white font-extrabold" 
-                            : "bg-slate-900 border-slate-850 text-slate-400 hover:border-slate-750 hover:text-slate-200"
+                            ? "bg-blue-600/20 border-blue-500 text-white font-extrabold shadow-md" 
+                            : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
                         }`}
                         style={{ direction: isAr ? "rtl" : "ltr" }}
                       >
-                        <span className="text-lg shrink-0">{country.flag}</span>
+                        <span className="text-xl shrink-0">{country.flag}</span>
                         <div className="truncate text-[11px] leading-tight flex-1">
-                          <p className="font-bold truncate">{isAr ? country.nameAr || country.name : country.name}</p>
-                          <p className="text-[9px] opacity-60 font-mono">{country.currency} ({country.currencySymbol})</p>
+                          <p className="font-extrabold truncate">{isAr ? country.nameAr || country.name : country.name}</p>
+                          <p className="text-[9px] opacity-60 font-mono mt-0.5">{country.currency} ({country.currencySymbol})</p>
                         </div>
                         {isSelected && (
-                          <div className={`absolute top-2.5 ${isAr ? "left-2.5" : "right-2.5"} w-3.5 h-3.5 bg-blue-500 rounded-full flex items-center justify-center`}>
-                            <Check className="w-2 h-2 text-white stroke-[3px]" />
+                          <div className={`absolute top-3 ${isAr ? "left-3" : "right-3"} w-4.5 h-4.5 bg-blue-500 rounded-full flex items-center justify-center`}>
+                            <Check className="w-2.5 h-2.5 text-white stroke-[3.5px]" />
                           </div>
                         )}
                       </button>
@@ -313,6 +367,7 @@ export default function OnboardingView({
             </motion.div>
           )}
 
+          {/* STEP 3: Passwordless Google & Apple Sign-In */}
           {step === 3 && (
             <motion.div
               key="step3"
@@ -320,13 +375,120 @@ export default function OnboardingView({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: -12 }}
               transition={{ duration: 0.35, ease: "easeOut" }}
-              className="space-y-5 text-center"
+              className="space-y-6"
             >
-              <div className="w-16 h-16 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-3xl flex items-center justify-center mx-auto mb-1 shadow-lg shadow-blue-500/5">
-                <Compass className="w-8 h-8 animate-spin-slow text-blue-400" />
+              <div className="text-center space-y-3">
+                <div className="inline-flex p-3.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-3xl mb-1 shadow-inner shadow-blue-500/5">
+                  <ShieldCheck className="w-9 h-9 text-blue-400" />
+                </div>
+                <h3 className="text-2xl font-black text-white tracking-tight leading-none">
+                  {isAr ? "تسجيل دخول آمن" : "Secure Passwordless Sign In"}
+                </h3>
+                <p className="text-xs text-slate-400 leading-normal max-w-xs mx-auto">
+                  {isAr 
+                    ? "لا توجد كلمات مرور صعبة بعد اليوم. سجل دخولك بضغطة واحدة لحفظ مستنداتك السفرية ونقاط XP تلقائياً." 
+                    : "No complicated passwords needed. Auth with one tap to save your progress, travel documents, and XP points."}
+                </p>
               </div>
 
-              <div className="space-y-1.5">
+              {/* Login Options card */}
+              <div className="bg-slate-900/90 border border-slate-800/80 backdrop-blur-2xl rounded-3xl p-6 space-y-5 shadow-2xl shadow-black/40">
+                <div className="space-y-3">
+                  {authError && (
+                    <div className="p-3 bg-rose-500/10 text-rose-400 rounded-2xl text-[11px] font-bold border border-rose-500/20 text-left">
+                      ⚠️ {authError}
+                    </div>
+                  )}
+
+                  {authSuccess && (
+                    <div className="p-3.5 bg-emerald-500/10 text-emerald-400 rounded-2xl text-xs font-bold border border-emerald-500/20 flex items-center justify-center gap-2">
+                      <CheckCircle className="w-4.5 h-4.5 text-emerald-400 animate-bounce" />
+                      <span>{isAr ? "تم تسجيل الدخول بنجاح!" : "Signed in successfully!"}</span>
+                    </div>
+                  )}
+
+                  {/* Google Sign-In button (Android / Web default) */}
+                  {(platform === "android" || platform === "web") && (
+                    <button
+                      type="button"
+                      disabled={authLoading || authSuccess}
+                      onClick={() => handleSocialSignIn("google")}
+                      className="w-full py-4 px-4 bg-white hover:bg-slate-50 text-slate-900 font-extrabold text-xs rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-98 flex items-center justify-center gap-3.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {authLoading ? (
+                        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                      ) : (
+                        <svg className="w-5.5 h-5.5 shrink-0" viewBox="0 0 24 24">
+                          <path
+                            fill="#4285F4"
+                            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                          />
+                          <path
+                            fill="#34A853"
+                            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                          />
+                          <path
+                            fill="#FBBC05"
+                            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                          />
+                          <path
+                            fill="#EA4335"
+                            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                          />
+                        </svg>
+                      )}
+                      <span>{isAr ? "تسجيل الدخول بـ Google" : "Continue with Google"}</span>
+                    </button>
+                  )}
+
+                  {/* Apple Sign-In button (iOS focus) */}
+                  {(platform === "ios" || platform === "web") && (
+                    <button
+                      type="button"
+                      disabled={authLoading || authSuccess}
+                      onClick={() => handleSocialSignIn("apple")}
+                      className="w-full py-4 px-4 bg-black hover:bg-slate-900 border border-slate-800 text-white font-extrabold text-xs rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-98 flex items-center justify-center gap-3.5 cursor-pointer disabled:opacity-50 mt-2.5"
+                    >
+                      {authLoading ? (
+                        <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                      ) : (
+                        <svg className="w-5 h-5 shrink-0" fill="white" viewBox="0 0 24 24">
+                          <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 4.17c.66-.81 1.11-1.93.99-3.06-.96.04-2.13.64-2.82 1.45-.6.7-1.13 1.84-.99 2.94.97.08 2.05-.52 2.82-1.33z" />
+                        </svg>
+                      )}
+                      <span>{isAr ? "تسجيل الدخول بـ Apple" : "Sign In with Apple"}</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-slate-800/80 pt-4 text-[11px] text-slate-500">
+                  <span className="flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-blue-500" /> {isAr ? "خصوصية كاملة" : "Privacy Secured"}</span>
+                  <button
+                    onClick={handleNextStep}
+                    className="text-blue-400 hover:text-blue-300 font-extrabold cursor-pointer"
+                  >
+                    {isAr ? "تخطي الآن" : "Skip Auth for Now"}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* STEP 4: Passport created */}
+          {step === 4 && (
+            <motion.div
+              key="step4"
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: -12 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="space-y-6 text-center"
+            >
+              <div className="w-18 h-18 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-3xl flex items-center justify-center mx-auto mb-1 shadow-lg shadow-blue-500/5">
+                <Compass className="w-9 h-9 text-blue-400 animate-spin" style={{ animationDuration: '8s' }} />
+              </div>
+
+              <div className="space-y-2">
                 <h3 className="text-2xl font-black text-white tracking-tight leading-none">
                   {isAr ? "أنت جاهز تماماً!" : "Ready to Fly!"}
                 </h3>
@@ -338,33 +500,34 @@ export default function OnboardingView({
               </div>
 
               {/* Passport Card summary */}
-              <div className="bg-slate-900 border border-slate-850 rounded-3xl p-4.5 max-w-sm mx-auto w-full divide-y divide-slate-800/50 text-[11px]">
-                <div className="flex justify-between items-center pb-2.5">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm mx-auto w-full divide-y divide-slate-800/50 text-[11px] shadow-xl">
+                <div className="flex justify-between items-center pb-3">
                   <span className="text-slate-500 flex items-center gap-1.5"><Globe className="w-3.5 h-3.5 text-blue-400" /> {isAr ? "لغة العرض" : "Selected Language"}</span>
                   <span className="font-extrabold text-blue-400">{isAr ? "العربية" : "English"}</span>
                 </div>
-                <div className="flex justify-between items-center py-2.5">
+                <div className="flex justify-between items-center py-3">
                   <span className="text-slate-500 flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-indigo-400" /> {isAr ? "الدولة الأم" : "Home Residence"}</span>
                   <span className="font-extrabold text-white">{selectedCountry.flag} {isAr ? selectedCountry.nameAr || selectedCountry.name : selectedCountry.name}</span>
                 </div>
-                <div className="flex justify-between items-center pt-2.5">
+                <div className="flex justify-between items-center pt-3">
                   <span className="text-slate-500 flex items-center gap-1.5"><Coins className="w-3.5 h-3.5 text-emerald-400" /> {isAr ? "العملة الأساسية" : "Home Currency"}</span>
                   <span className="font-extrabold text-emerald-400 font-mono">{selectedCountry.currency} ({selectedCountry.currencySymbol})</span>
                 </div>
               </div>
             </motion.div>
           )}
+
         </AnimatePresence>
       </div>
 
       {/* Navigation Footer */}
-      <div className="relative z-10 flex items-center justify-between w-full max-w-md mx-auto pt-2">
+      <div className="relative z-10 flex items-center justify-between w-full max-w-md mx-auto pt-2 border-t border-white/5">
         {/* Back Button */}
         <div>
-          {step > 1 ? (
+          {step > 1 && step < 4 ? (
             <button
               onClick={handleBackStep}
-              className="px-4 py-2.5 rounded-xl border border-slate-850 text-slate-400 hover:text-white hover:border-slate-700 transition-all text-xs font-bold flex items-center gap-1 cursor-pointer active:scale-95"
+              className="px-4 py-2.5 rounded-xl border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-all text-xs font-bold flex items-center gap-1 cursor-pointer active:scale-95 bg-slate-900/40"
             >
               {isAr ? <ArrowRight className="w-3.5 h-3.5" /> : <ArrowLeft className="w-3.5 h-3.5" />}
               <span>{isAr ? "رجوع" : "Back"}</span>
@@ -375,12 +538,12 @@ export default function OnboardingView({
         </div>
 
         {/* Step Indicator Bullets */}
-        <div className="flex gap-1.5">
-          {[1, 2, 3].map((bullet) => (
+        <div className="flex gap-2">
+          {[1, 2, 3, 4].map((bullet) => (
             <div 
               key={bullet}
               className={`h-1.5 rounded-full transition-all duration-300 ${
-                bullet === step ? "w-5 bg-blue-500" : "w-1.5 bg-slate-800"
+                bullet === step ? "w-6 bg-blue-500" : "w-1.5 bg-slate-800"
               }`}
             />
           ))}
@@ -391,17 +554,25 @@ export default function OnboardingView({
           {step < 3 ? (
             <button
               onClick={handleNextStep}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-all text-xs font-bold flex items-center gap-1 shadow-lg shadow-blue-600/15 cursor-pointer active:scale-95"
+              className="px-4.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-all text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-blue-600/20 cursor-pointer active:scale-95"
             >
               <span>{isAr ? "التالي" : "Next"}</span>
+              {isAr ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
+            </button>
+          ) : step === 3 ? (
+            <button
+              onClick={handleNextStep}
+              className="px-4.5 py-2.5 rounded-xl border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-all text-xs font-bold flex items-center gap-1 cursor-pointer active:scale-95 bg-slate-900/40"
+            >
+              <span>{isAr ? "تخطي" : "Skip"}</span>
               {isAr ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
             </button>
           ) : (
             <button
               onClick={handleFinish}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition-all text-xs font-black flex items-center gap-1.5 shadow-lg shadow-blue-600/20 cursor-pointer active:scale-95"
+              className="px-4.5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition-all text-xs font-black flex items-center gap-1.5 shadow-lg shadow-blue-600/20 cursor-pointer active:scale-95 animate-pulse"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300 animate-pulse" />
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
               <span>{isAr ? "ابدأ الاستكشاف" : "Start Nomi"}</span>
             </button>
           )}
