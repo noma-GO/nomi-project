@@ -77,24 +77,26 @@ app.post("/api/scan-product", async (req, res) => {
     let textPrompt = "";
     
     if (scanMode === "barcode") {
-      textPrompt = `Analyze this traveler-scanned image focusing strictly on identifying and decoding any barcodes.
-If a barcode is detected, decode its numerical sequence. Look up what product, brand, and category this barcode belongs to, and estimate its retail price in the local currency of ${targetCountry}.
-If NO barcode is visible, do your best to detect any textual barcodes or identify the product and estimate its standard barcode sequence.
+      textPrompt = `Analyze this traveler-scanned image focusing strictly on identifying and decoding any barcodes or QR codes.
+If a QR code is detected, decode its exact text, web URL, or encoded details.
+If a barcode is detected, decode its complete numeric or alphanumeric sequence.
+Look up or identify what product, brand, and category this barcode or QR code belongs to, and estimate its retail price in the local currency of ${targetCountry}.
+If NO barcode or QR is visible, do your best to detect any textual barcodes, look up the product from any text in the image, and estimate its standard barcode sequence.
 
 You MUST return a JSON object with the following fields:
 {
-  "barcode": "string (the detected numeric barcode sequence, or null if not found)",
-  "productName": "string (the matching product name)",
+  "barcode": "string (the detected numeric barcode sequence or the decoded QR text/URL, or null if absolutely not found)",
+  "productName": "string (the matching product name identified)",
   "brand": "string (the product brand)",
   "category": "string (must be one of: Food, Beverage, Essentials, Electronics, or Other)",
   "estimatedLocalPrice": "number (realistic average price in ${targetCountry}'s local currency, e.g. 150)",
   "currency": "string (3-letter currency code of ${targetCountry}, e.g. JPY)",
-  "description": "string (explain the barcode scan result, product details, and verify if it is a genuine local product)",
+  "description": "string (explain the barcode or QR code scan result, product details, list ingredients if visible, and verify if it is a genuine local product)",
   "isTrusted": "boolean (true if authentic local product)",
   "confidenceScore": "number (0-100 score)"
 }`;
     } else if (scanMode === "ocr") {
-      textPrompt = `Read and extract ALL visible text from this image with high-precision optical character recognition (OCR). 
+      textPrompt = `Read and extract ALL visible text from this image with high-precision optical character recognition (OCR) and translate or interpret it for travelers. 
 Preserve the visual structure as much as possible, format headings, paragraphs, or lists, and detect the language of the text.
 
 You MUST return a JSON object with the following fields:

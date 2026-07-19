@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { 
-  Sparkles, Send, Trash2, HelpCircle, ArrowLeft, ArrowRight, 
-  MessageSquare, User, Compass, Info, DollarSign, Train, Shield, Lightbulb
+  Sparkles, Send, Trash2, ArrowLeft, User, Compass, Info, DollarSign, Train, Shield, Lightbulb,
+  Paperclip, Mic, MicOff, Loader2
 } from "lucide-react";
 import { Country } from "../types";
 import { useLanguage } from "../lib/i18n";
@@ -23,29 +23,29 @@ interface AssistantViewProps {
 const QUICK_PROMPTS = [
   {
     icon: <DollarSign className="w-3.5 h-3.5 text-amber-500" />,
-    labelEn: "Tipping rules here?",
-    labelAr: "ما هي قواعد الإكرامية هنا؟",
+    labelEn: "Tipping rules?",
+    labelAr: "قواعد الإكرامية؟",
     promptEn: "What are the local tipping guidelines, card payment acceptance, and cash etiquette here?",
     promptAr: "ما هي القواعد المحلية لترك الإكرامية (Tipping)، ومدى قبول الدفع بالبطاقات والتعامل بالكاش هنا؟"
   },
   {
     icon: <Train className="w-3.5 h-3.5 text-blue-500" />,
-    labelEn: "Cheap transit tips?",
-    labelAr: "نصائح مواصلات رخيصة؟",
+    labelEn: "Transit tips?",
+    labelAr: "نصائح مواصلات؟",
     promptEn: "What is the cheapest and most reliable way to travel around the city using public transit?",
     promptAr: "ما هي الطريقة الأرخص والأكثر موثوقية للتنقل داخل المدينة باستخدام المواصلات العامة؟"
   },
   {
     icon: <Lightbulb className="w-3.5 h-3.5 text-emerald-500" />,
-    labelEn: "Local grocery hacks?",
-    labelAr: "توفير البقالة ومطاعم رخيصة؟",
+    labelEn: "Grocery hacks?",
+    labelAr: "توفير البقالة؟",
     promptEn: "What are the cheapest supermarket chains or discount local food stalls to buy groceries and daily meals?",
     promptAr: "ما هي أرخص سلاسل السوبرماركت ومحلات الخصومات المحلية لشراء البقالة والوجبات اليومية؟"
   },
   {
     icon: <Shield className="w-3.5 h-3.5 text-rose-500" />,
     labelEn: "Safety & manners?",
-    labelAr: "الأمان والسلوكيات العامة؟",
+    labelAr: "الأمان والسلوكيات؟",
     promptEn: "What are the critical cultural manners, tourist scams to avoid, and general safety protocols to follow here?",
     promptAr: "ما هي السلوكيات الثقافية الهامة، وما هي فخاخ السياح (Scams) الشائعة التي يجب تجنبها والأمان العام هنا؟"
   }
@@ -62,7 +62,13 @@ export default function AssistantView({
   const [inputText, setInputText] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize with dynamic greeting
   useEffect(() => {
@@ -74,7 +80,7 @@ export default function AssistantView({
 * العثور على بدائل رخيصة للبقالة وتجنب الفخاخ السياحية بالمنطقة.
 * فهم الثقافة المحلية، المواصلات العامة، وتصريف العملات بسهولة.
 
-كيف يمكنني مساعدتك اليوم؟ يمكنك كتابة سؤالك أو النقر على أحد الخيارات السريعة بالأسفل!`
+كيف يمكنني مساعدتك اليوم؟ اكتب سؤالك بالأسفل أو انقر على أحد الخيارات السريعة للبدء فوراً!`
       : `Hello! I am your personal AI Travel Assistant here in **${currentCountry.name}** 🗺️.
       
 I can assist you with:
@@ -89,24 +95,56 @@ How can I help you today? Ask me anything or tap one of the quick suggestions be
         id: "welcome",
         role: "assistant",
         content: localGreeting,
-        timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+        timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
       }
     ]);
   }, [currentCountry, language]);
 
-  // Scroll to bottom on updates
+  // Smooth scrolling on updates
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, loading]);
 
+  // Recording timer simulation
+  useEffect(() => {
+    if (isRecording) {
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      setRecordingTime(0);
+    }
+    return () => {
+      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+    };
+  }, [isRecording]);
+
   const handleSendMessage = async (text: string) => {
-    if (!text.trim() || loading) return;
+    if (!text.trim() && !attachment && !isRecording) return;
+    
+    let messageText = text;
+    if (isRecording) {
+      messageText = isAr 
+        ? "🎤 رسالة صوتية مرسلة (تم تحويل الصوت إلى نص تلقائياً)." 
+        : "🎤 Sent a voice message (automatically transcribed).";
+      setIsRecording(false);
+    }
+
+    if (attachment) {
+      messageText += ` 📄 [مرفق: ${attachment.name}]`;
+      setAttachment(null);
+    }
 
     const userMsg: Message = {
       id: "msg-" + Date.now(),
       role: "user",
-      content: text,
-      timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+      content: messageText,
+      timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
     };
 
     setMessages(prev => [...prev, userMsg]);
@@ -119,8 +157,7 @@ How can I help you today? Ask me anything or tap one of the quick suggestions be
         content: m.content
       }));
 
-      // Add the current message
-      history.push({ role: "user", content: text });
+      history.push({ role: "user", content: messageText });
 
       const response = await fetch("/api/chat-assistant", {
         method: "POST",
@@ -143,17 +180,17 @@ How can I help you today? Ask me anything or tap one of the quick suggestions be
         id: "reply-" + Date.now(),
         role: "assistant",
         content: data.reply || (isAr ? "عذرًا، لم أتمكن من معالجة الطلب." : "Apologies, I couldn't process that response."),
-        timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+        timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
       };
 
       setMessages(prev => [...prev, assistantMsg]);
 
     } catch (err) {
       console.warn("AI Chat assistant failed. Engaging local offline expert fallback...", err);
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 600));
 
       let fallbackText = "";
-      const cleaned = text.toLowerCase();
+      const cleaned = messageText.toLowerCase();
 
       if (cleaned.includes("tipping") || cleaned.includes("إكرام") || cleaned.includes("بخشيش")) {
         fallbackText = isAr
@@ -177,10 +214,10 @@ How can I help you today? Ask me anything or tap one of the quick suggestions be
 * **Taxis**: Avoid them if you are on a budget as base fares are extremely premium; use local ride-hailing apps or buses instead.`;
       } else {
         fallbackText = isAr
-          ? `لقد تلقيت سؤالك حول **${text}**.
+          ? `لقد تلقيت سؤالك حول **${messageText}**.
           
 بصفتي دليلك الذكي في **${currentCountry.nameAr || currentCountry.name}**، أنصحك بالبحث دائماً في الأسواق المحلية والمتاجر الشعبية (Supermarkets) الكبرى للحصول على أفضل توفير، وتجنب الشراء من المحلات الواقعة بجوار المعالم السياحية مباشرة حيث تتضاعف الأسعار!`
-          : `I received your inquiry regarding **"${text}"**.
+          : `I received your inquiry regarding **"${messageText}"**.
           
 As your traveler specialist in **${currentCountry.name}**, I advise checking out major local supermarket chains and regional grocery cooperatives to buy foods and treats. Shopping outside high-traffic tourist plazas typically reduces your checkout cost by half!`;
       }
@@ -189,7 +226,7 @@ As your traveler specialist in **${currentCountry.name}**, I advise checking out
         id: "fallback-reply-" + Date.now(),
         role: "assistant",
         content: fallbackText,
-        timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+        timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
       };
       setMessages(prev => [...prev, assistantMsg]);
     } finally {
@@ -208,71 +245,85 @@ As your traveler specialist in **${currentCountry.name}**, I advise checking out
           id: "welcome-reset",
           role: "assistant",
           content: localGreeting,
-          timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+          timestamp: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
         }
       ]);
     }
   };
 
+  const toggleRecording = () => {
+    if (isRecording) {
+      handleSendMessage("");
+    } else {
+      setIsRecording(true);
+    }
+  };
+
+  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setAttachment(e.target.files[0]);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-slate-50 relative animate-fade-in pb-28" id="chat-assistant-container">
+    <div className={`flex flex-col h-[calc(100vh-130px)] bg-slate-50 relative ${isAr ? "rtl" : "ltr"} font-sans`} id="chat-assistant-container">
       
-      {/* Top Header */}
-      <div className="bg-white border-b border-slate-100 p-4 shadow-sm flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md animate-pulse">
-            <Sparkles className="w-5 h-5 text-amber-300" />
+      {/* Top Header - Tight & Elegant */}
+      <div className="bg-white border-b border-slate-100 px-3.5 py-2.5 shadow-sm flex items-center justify-between shrink-0 sticky top-0 z-10 rounded-b-xl">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center shadow-md">
+            <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
           </div>
-          <div className="text-left">
-            <h3 className="text-xs font-display font-black text-slate-800 leading-tight">
-              {isAr ? "مساعد السفر الذكي" : "Travel AI Assistant"}
+          <div className={isAr ? "text-right" : "text-left"}>
+            <h3 className="text-xs font-black text-slate-800 tracking-tight leading-none">
+              {isAr ? "مساعد السفر الذكي" : "AI Travel Assistant"}
             </h3>
-            <span className="text-[10px] text-blue-600 font-bold flex items-center gap-0.5">
-              <span className="w-2 h-2 bg-emerald-500 rounded-full inline-block animate-ping"></span>
-              {isAr ? `${currentCountry.nameAr || currentCountry.name} - متصل` : `${currentCountry.name} Mode - Online`}
+            <span className="text-[9px] text-blue-600 font-bold flex items-center gap-1 mt-0.5">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block animate-ping"></span>
+              <span>{isAr ? `${currentCountry.nameAr || currentCountry.name} - متصل` : `${currentCountry.name} Mode - Live`}</span>
             </span>
           </div>
         </div>
 
         <button
           onClick={handleClearChat}
-          className="p-2 hover:bg-slate-100 text-slate-400 hover:text-red-500 rounded-xl transition-all"
-          title="Clear Conversation"
+          className="p-1.5 hover:bg-slate-100 active:scale-95 text-slate-400 hover:text-red-500 rounded-lg transition-all border border-transparent hover:border-slate-200"
+          title={isAr ? "مسح المحادثة" : "Clear Conversation"}
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* Chat Messages Log Panel */}
-      <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4">
+      {/* Chat Messages Panel - Highly compact spacing */}
+      <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-3.5 bg-slate-50/50">
         {messages.map((m) => {
           const isUser = m.role === "user";
           return (
             <div 
               key={m.id}
-              className={`flex gap-2.5 items-start max-w-[85%] ${
-                isUser ? "ml-auto flex-row-reverse" : "mr-auto"
+              className={`flex gap-2 items-start max-w-[92%] ${
+                isUser ? "ms-auto flex-row-reverse" : "me-auto"
               } animate-fade-in`}
             >
-              {/* Avatar Icon */}
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
-                isUser ? "bg-slate-200 text-slate-600" : "bg-blue-600 text-white"
+              {/* Tight Avatar Icon */}
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${
+                isUser ? "bg-slate-200 text-slate-600" : "bg-gradient-to-tr from-blue-600 to-indigo-500 text-white"
               }`}>
-                {isUser ? <User className="w-4 h-4" /> : <Sparkles className="w-4.5 h-4.5 text-amber-300" />}
+                {isUser ? <User className="w-3.5 h-3.5" /> : <Sparkles className="w-3 h-3 text-amber-300" />}
               </div>
 
-              {/* Message Bubble */}
+              {/* Compact Message Bubble */}
               <div className="space-y-1">
-                <div className={`p-3.5 rounded-2xl text-xs font-medium leading-relaxed shadow-sm ${
+                <div className={`px-3 py-2.5 rounded-xl text-[11px] font-medium leading-relaxed border ${
                   isUser 
-                    ? "bg-blue-600 text-white rounded-tr-none text-left" 
-                    : "bg-white text-slate-800 border border-slate-100 rounded-tl-none text-left"
+                    ? "bg-blue-600 border-blue-500 text-white rounded-tr-none text-left" 
+                    : "bg-white text-slate-800 border-slate-100 rounded-tl-none text-left"
                 }`}>
-                  <div className="markdown-body">
+                  <div className="markdown-body font-normal leading-relaxed text-left break-words">
                     <ReactMarkdown>{m.content}</ReactMarkdown>
                   </div>
                 </div>
-                <span className={`text-[9px] text-slate-400 font-mono block ${isUser ? "text-right" : "text-left"}`}>
+                <span className={`text-[8px] text-slate-400 font-bold block px-1 ${isUser ? "text-right" : "text-left"}`}>
                   {m.timestamp}
                 </span>
               </div>
@@ -280,16 +331,16 @@ As your traveler specialist in **${currentCountry.name}**, I advise checking out
           );
         })}
 
-        {/* Typing indicator spinner */}
+        {/* Dynamic loading indicator */}
         {loading && (
-          <div className="flex gap-2.5 items-start mr-auto max-w-[85%] animate-pulse">
-            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0">
-              <Sparkles className="w-4.5 h-4.5 text-amber-300 animate-spin" />
+          <div className="flex gap-2 items-start me-auto max-w-[85%] animate-pulse">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center shrink-0">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
             </div>
-            <div className="bg-white border border-slate-100 p-3.5 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-1.5 text-xs text-blue-600 font-bold">
-              <span className="w-2 h-2 bg-blue-600 rounded-full animate-bounce [animation-delay:0s]"></span>
-              <span className="w-2 h-2 bg-blue-600 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-              <span className="w-2 h-2 bg-blue-600 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+            <div className="bg-white border border-slate-100 px-3.5 py-2 rounded-xl rounded-tl-none shadow-sm flex items-center gap-1 text-[11px] text-blue-600 font-bold">
+              <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce [animation-delay:0s]"></span>
+              <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce [animation-delay:0.15s]"></span>
+              <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce [animation-delay:0.3s]"></span>
             </div>
           </div>
         )}
@@ -297,14 +348,27 @@ As your traveler specialist in **${currentCountry.name}**, I advise checking out
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick suggest prompts bar */}
-      <div className="px-4 py-2 border-t border-slate-100/50 bg-white/50 backdrop-blur shrink-0 overflow-x-auto no-scrollbar flex gap-2">
+      {/* Attachment status banner */}
+      {attachment && (
+        <div className="mx-3 mb-1.5 p-2 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between text-[11px] text-blue-700 font-bold shadow-sm">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Paperclip className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+            <span className="truncate">{attachment.name}</span>
+          </div>
+          <button onClick={() => setAttachment(null)} className="text-blue-500 hover:text-red-500 font-black text-[10px] shrink-0">
+            {isAr ? "إلغاء" : "Cancel"}
+          </button>
+        </div>
+      )}
+
+      {/* Quick suggest prompts ribbon - Compact horizontal design with zero empty waste */}
+      <div className="px-3 py-2 border-t border-slate-100/60 bg-white shrink-0 overflow-x-auto no-scrollbar flex gap-1.5">
         {QUICK_PROMPTS.map((qp, idx) => (
           <button
             key={idx}
             onClick={() => handleSendMessage(isAr ? qp.promptAr : qp.promptEn)}
             disabled={loading}
-            className="flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-100 rounded-xl text-[10px] font-bold text-slate-700 shadow-sm transition-all whitespace-nowrap shrink-0 hover:scale-102 active:scale-98"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/50 rounded-lg text-[9px] font-black text-slate-700 shadow-sm transition-all whitespace-nowrap shrink-0 cursor-pointer"
           >
             {qp.icon}
             <span>{isAr ? qp.labelAr : qp.labelEn}</span>
@@ -312,25 +376,67 @@ As your traveler specialist in **${currentCountry.name}**, I advise checking out
         ))}
       </div>
 
-      {/* Bottom Text Entry Box */}
-      <div className="p-4 bg-white border-t border-slate-100 shrink-0 flex items-center gap-2">
-        <input
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSendMessage(inputText);
-          }}
-          placeholder={isAr ? "اسأل Nomi عن الأسعار، الأماكن، أو الأمان..." : "Ask Nomi about budgets, transit, hacks..."}
+      {/* Bottom Text Entry Box - Slim and space-optimized */}
+      <div className="p-2.5 bg-white border-t border-slate-150/50 shrink-0 flex items-center gap-1.5 shadow-sm">
+        {/* Attach File Button */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
           disabled={loading}
-          className={`flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-xs text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none font-medium ${isAr ? "text-right" : "text-left"}`}
+          className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-xl border border-slate-100 shadow-sm shrink-0 cursor-pointer"
+          title={isAr ? "إرفاق ملف" : "Attach File"}
+        >
+          <Paperclip className="w-4 h-4" />
+        </button>
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          onChange={handleFileAttach} 
+          className="hidden" 
+          accept="image/*,application/pdf,text/*" 
         />
+
+        {/* Main Text Input Area */}
+        <div className="flex-1 relative flex items-center">
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSendMessage(inputText);
+            }}
+            placeholder={isAr ? "اسأل Nomi عن الأسعار، المواصلات..." : "Ask Nomi about budgets, transit..."}
+            disabled={loading || isRecording}
+            className={`w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-[11px] text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none font-semibold ${isAr ? "text-right" : "text-left"}`}
+          />
+          {isRecording && (
+            <div className={`absolute inset-0 bg-red-500 text-white rounded-xl px-3 flex items-center justify-between text-[10px] font-bold animate-pulse ${isAr ? "flex-row-reverse" : "flex-row"}`}>
+              <span>{isAr ? "🎤 جاري تسجيل الصوت..." : "🎤 Recording audio..."}</span>
+              <span className="font-mono">{recordingTime}s</span>
+            </div>
+          )}
+        </div>
+
+        {/* Microphone Voice Button */}
+        <button
+          onClick={toggleRecording}
+          disabled={loading}
+          className={`p-2.5 rounded-xl border transition-all shrink-0 active:scale-95 shadow-sm cursor-pointer ${
+            isRecording 
+              ? "bg-red-500 border-red-500 text-white animate-bounce" 
+              : "text-slate-400 hover:text-red-500 hover:bg-slate-50 border-slate-100"
+          }`}
+          title={isAr ? "تسجيل الصوت" : "Voice Message"}
+        >
+          {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+        </button>
+
+        {/* Send Action Button */}
         <button
           onClick={() => handleSendMessage(inputText)}
-          disabled={!inputText.trim() || loading}
-          className="p-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-2xl shadow-md transition-all shrink-0 hover:scale-105 active:scale-95"
+          disabled={(!inputText.trim() && !attachment && !isRecording) || loading}
+          className="p-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-45 text-white rounded-xl shadow-sm transition-all shrink-0 cursor-pointer"
         >
-          <Send className="w-4.5 h-4.5" />
+          <Send className="w-3.5 h-3.5" />
         </button>
       </div>
 

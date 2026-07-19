@@ -8,7 +8,10 @@ import {
   createUserWithEmailAndPassword as fbCreateUserWithEmailAndPassword, 
   updateProfile as fbUpdateProfile,
   linkWithCredential as fbLinkWithCredential, 
-  EmailAuthProvider as fbEmailAuthProvider 
+  EmailAuthProvider as fbEmailAuthProvider,
+  GoogleAuthProvider as fbGoogleAuthProvider,
+  signInWithPopup as fbSignInWithPopup,
+  linkWithPopup as fbLinkWithPopup
 } from "firebase/auth";
 import { 
   getFirestore, 
@@ -84,6 +87,37 @@ export async function signInAnonymously(authObj: any) {
   } catch (err) {
     console.warn("[NOMI FIREBASE MOCK] signInAnonymously failed, using guest session:", err);
     return { user: { uid: "guest-user", isAnonymous: true } };
+  }
+}
+
+export async function signInWithGoogle(authObj: any) {
+  if (!isFirebaseAvailable || !authObj) {
+    console.warn("[NOMI FIREBASE MOCK] signInWithGoogle: Firebase offline, using mock user");
+    return { user: { uid: "google-user-mock", displayName: "Google Traveler", email: "google.traveler@gmail.com" } };
+  }
+  try {
+    const provider = new fbGoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' }); // Always open the account chooser on the device directly!
+    
+    // Check if there is an anonymous user logged in currently, to link accounts
+    const currentUser = authObj.currentUser;
+    if (currentUser && currentUser.isAnonymous) {
+      try {
+        const result = await fbLinkWithPopup(currentUser, provider);
+        return result;
+      } catch (linkErr: any) {
+        // If the account is already linked to another user, just sign in directly
+        if (linkErr.code === 'auth/credential-already-in-use') {
+          return await fbSignInWithPopup(authObj, provider);
+        }
+        throw linkErr;
+      }
+    } else {
+      return await fbSignInWithPopup(authObj, provider);
+    }
+  } catch (err) {
+    console.error("[NOMI FIREBASE] signInWithGoogle failed:", err);
+    throw err;
   }
 }
 

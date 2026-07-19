@@ -27,7 +27,8 @@ import {
   collection, doc, setDoc, onSnapshot, getDocs, 
   query, orderBy, deleteDoc, updateDoc, increment, getDoc,
   updateProfile, linkWithCredential, EmailAuthProvider,
-  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
+  signInWithGoogle
 } from "./lib/firebase";
 import { User as FirebaseUser } from "firebase/auth";
 import { useLanguage, Language } from "./lib/i18n";
@@ -377,6 +378,16 @@ export default function App() {
     }
   };
 
+  const handleSignInGoogle = async () => {
+    try {
+      await signInWithGoogle(auth);
+      return { success: true };
+    } catch (err: any) {
+      console.error("Google sign-in failed:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
   const handleSignOutUser = async () => {
     try {
       await signOut(auth);
@@ -549,6 +560,7 @@ export default function App() {
             onUpdateName={handleUpdateProfileName}
             onRegister={handleRegisterEmail}
             onSignIn={handleSignInEmail}
+            onSignInGoogle={handleSignInGoogle}
             onSignOut={handleSignOutUser}
           />
         )}
